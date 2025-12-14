@@ -37,19 +37,19 @@ class _VideosScreenState extends State<VideosScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF16213e),
-        title: const Text('Supprimer', style: TextStyle(color: Colors.white)),
+        title: const Text('Delete', style: TextStyle(color: Colors.white)),
         content: const Text(
-          'Voulez-vous vraiment supprimer cette video?',
+          'Do you really want to delete this video?',
           style: TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Annuler'),
+            child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Supprimer', style: TextStyle(color: Colors.red)),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -61,7 +61,7 @@ class _VideosScreenState extends State<VideosScreen> {
         _loadVideos();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Video supprimee')),
+            const SnackBar(content: Text('Video deleted')),
           );
         }
       }
@@ -79,7 +79,7 @@ class _VideosScreenState extends State<VideosScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF1a1a2e),
       appBar: AppBar(
-        title: const Text('Mes Videos'),
+        title: const Text('My Videos'),
         backgroundColor: const Color(0xFF16213e),
         centerTitle: true,
         actions: [
@@ -105,7 +105,7 @@ class _VideosScreenState extends State<VideosScreen> {
                       ),
                       const SizedBox(height: 20),
                       const Text(
-                        'Aucune video',
+                        'No videos',
                         style: TextStyle(
                           color: Colors.white70,
                           fontSize: 18,
@@ -114,7 +114,7 @@ class _VideosScreenState extends State<VideosScreen> {
                       const SizedBox(height: 10),
                       TextButton(
                         onPressed: _loadVideos,
-                        child: const Text('Rafraichir'),
+                        child: const Text('Refresh'),
                       ),
                     ],
                   ),
@@ -134,7 +134,7 @@ class _VideosScreenState extends State<VideosScreen> {
   }
 
   Widget _buildVideoCard(Map<String, dynamic> video) {
-    final title = video['title'] ?? 'Sans titre';
+    final title = video['title'] ?? 'Untitled';
     final date = video['createdAt'] ?? video['date'] ?? '';
     final videoId = video['id']?.toString() ?? video['_id']?.toString() ?? '';
 

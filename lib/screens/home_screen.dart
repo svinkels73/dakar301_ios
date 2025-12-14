@@ -68,7 +68,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) {
       setState(() {
         _isConnected = connected;
-        _statusMessage = connected ? 'Connecte au serveur' : 'Hors ligne';
+        _statusMessage = connected ? 'Connected to server' : 'Offline';
       });
     }
 
@@ -82,7 +82,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_queueCount == 0 || _isUploading) return;
 
     setState(() {
-      _statusMessage = 'Envoi des fichiers en attente...';
+      _statusMessage = 'Sending queued files...';
     });
 
     final uploaded = await QueueService.processQueue();
@@ -91,9 +91,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) {
       setState(() {
         if (uploaded > 0) {
-          _statusMessage = '$uploaded fichier(s) envoye(s)!';
+          _statusMessage = '$uploaded file(s) sent!';
         } else {
-          _statusMessage = _isConnected ? 'Connecte au serveur' : 'Hors ligne';
+          _statusMessage = _isConnected ? 'Connected to server' : 'Offline';
         }
       });
     }
@@ -111,7 +111,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     } catch (e) {
       setState(() {
-        _statusMessage = 'Erreur camera';
+        _statusMessage = 'Camera error';
       });
     }
   }
@@ -128,7 +128,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     } catch (e) {
       setState(() {
-        _statusMessage = 'Erreur camera';
+        _statusMessage = 'Camera error';
       });
     }
   }
@@ -139,7 +139,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         context: context,
         builder: (context) => AlertDialog(
           backgroundColor: const Color(0xFF16213e),
-          title: const Text('Choisir', style: TextStyle(color: Colors.white)),
+          title: const Text('Choose', style: TextStyle(color: Colors.white)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -171,7 +171,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     } catch (e) {
       setState(() {
-        _statusMessage = 'Erreur selection';
+        _statusMessage = 'Selection error';
       });
     }
   }
@@ -181,7 +181,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // Try direct upload
       setState(() {
         _isUploading = true;
-        _statusMessage = 'Upload en cours...';
+        _statusMessage = 'Uploading...';
       });
 
       Map<String, dynamic>? result;
@@ -197,7 +197,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       if (result != null) {
         setState(() {
-          _statusMessage = '${type == 'video' ? 'Video' : 'Photo'} envoyee!';
+          _statusMessage = '${type == 'video' ? 'Video' : 'Photo'} sent!';
         });
       } else {
         // Upload failed - add to queue
@@ -214,14 +214,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _updateQueueCount();
 
     setState(() {
-      _statusMessage = 'Ajoute a la file ($_queueCount en attente)';
+      _statusMessage = 'Added to queue ($_queueCount pending)';
     });
 
     // Show snackbar
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${type == 'video' ? 'Video' : 'Photo'} ajoutee a la file d\'attente'),
+          content: Text('${type == 'video' ? 'Video' : 'Photo'} added to queue'),
           backgroundColor: Colors.orange,
           duration: const Duration(seconds: 2),
         ),
@@ -320,7 +320,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               if (_queueCount > 0) ...[
                 const SizedBox(height: 10),
                 Text(
-                  '$_queueCount fichier(s) en attente',
+                  '$_queueCount file(s) pending',
                   style: const TextStyle(color: Colors.orange, fontSize: 14),
                 ),
               ],
@@ -331,7 +331,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ElevatedButton.icon(
                 onPressed: _isUploading ? null : _captureVideo,
                 icon: const Icon(Icons.videocam, size: 24),
-                label: const Text('Capturer Video', style: TextStyle(fontSize: 16)),
+                label: const Text('Capture Video', style: TextStyle(fontSize: 16)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFe94560),
                   foregroundColor: Colors.white,
@@ -347,7 +347,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ElevatedButton.icon(
                 onPressed: _isUploading ? null : _capturePhoto,
                 icon: const Icon(Icons.camera_alt, size: 24),
-                label: const Text('Prendre Photo', style: TextStyle(fontSize: 16)),
+                label: const Text('Take Photo', style: TextStyle(fontSize: 16)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF4a90d9),
                   foregroundColor: Colors.white,
@@ -363,7 +363,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               OutlinedButton.icon(
                 onPressed: _isUploading ? null : _selectFromGallery,
                 icon: const Icon(Icons.photo_library, size: 22),
-                label: const Text('Choisir de la Galerie', style: TextStyle(fontSize: 14)),
+                label: const Text('Choose from Gallery', style: TextStyle(fontSize: 14)),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.white,
                   side: const BorderSide(color: Colors.white54),
@@ -382,7 +382,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     CircularProgressIndicator(color: Color(0xFFe94560)),
                     SizedBox(height: 10),
                     Text(
-                      'Upload en cours...',
+                      'Uploading...',
                       style: TextStyle(color: Colors.white70),
                     ),
                   ],
@@ -397,8 +397,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 },
                 icon: const Icon(Icons.refresh, size: 18),
                 label: Text(_queueCount > 0 && _isConnected
-                  ? 'Envoyer maintenant'
-                  : 'Rafraichir'),
+                  ? 'Send now'
+                  : 'Refresh'),
                 style: TextButton.styleFrom(
                   foregroundColor: Colors.white54,
                 ),
