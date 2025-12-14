@@ -1,12 +1,14 @@
 workflows:
   ios-workflow:
-    name: iOS Workflow
+    name: iOS Release Build
     max_build_duration: 60
     instance_type: mac_mini_m2
     environment:
       flutter: 3.24.0
       xcode: 16.0
       cocoapods: default
+      vars:
+        FLUTTER_BUILD_MODE: release
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.dakar301.dakar301
@@ -17,14 +19,10 @@ workflows:
       - name: Set up code signing
         script: |
           xcode-project use-profiles
-      - name: Build iOS Release
+      - name: Build iOS IPA
         script: |
-          flutter build ios --release
-          cd ios
-          xcodebuild -workspace Runner.xcworkspace -scheme Runner -configuration Release -archivePath build/Runner.xcarchive archive
-          xcodebuild -exportArchive -archivePath build/Runner.xcarchive -exportOptionsPlist /Users/builder/export_options.plist -exportPath build/ipa
+          flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
     artifacts:
-      - ios/build/ipa/*.ipa
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
     publishing:
