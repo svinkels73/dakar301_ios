@@ -106,11 +106,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Logo
-              const Text(
-                '🎬',
-                style: TextStyle(fontSize: 80),
-              ),
+              const Icon(Icons.videocam, size: 80, color: Colors.white),
               const SizedBox(height: 20),
               const Text(
                 'DAKAR 301',

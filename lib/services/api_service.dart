@@ -27,11 +27,9 @@ class ApiService {
       if (response.statusCode == 200 || response.statusCode == 201) {
         return json.decode(response.body);
       } else {
-        print('Upload failed: ${response.statusCode} - ${response.body}');
         return null;
       }
     } catch (e) {
-      print('Upload error: $e');
       return null;
     }
   }
@@ -47,7 +45,6 @@ class ApiService {
       }
       return [];
     } catch (e) {
-      print('Get videos error: $e');
       return [];
     }
   }
@@ -58,7 +55,6 @@ class ApiService {
       final response = await http.delete(Uri.parse('$baseUrl/videos/$videoId'));
       return response.statusCode == 200;
     } catch (e) {
-      print('Delete error: $e');
       return false;
     }
   }
