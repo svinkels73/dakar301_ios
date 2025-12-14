@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
+import '../services/queue_service.dart';
 import 'videos_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -11,24 +13,90 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final ImagePicker _picker = ImagePicker();
   bool _isUploading = false;
   String _statusMessage = '';
   bool _isConnected = false;
+  int _queueCount = 0;
+  Timer? _connectivityTimer;
 
   @override
   void initState() {
     super.initState();
-    _checkConnection();
+    WidgetsBinding.instance.addObserver(this);
+    _initialize();
   }
 
-  Future<void> _checkConnection() async {
-    final serverConnected = await ApiService.checkConnection();
-    setState(() {
-      _isConnected = serverConnected;
-      _statusMessage = serverConnected ? 'Connecte au serveur' : 'Serveur non disponible';
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _connectivityTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // App came back to foreground - check connection and process queue
+      _checkConnectionAndProcessQueue();
+    }
+  }
+
+  Future<void> _initialize() async {
+    await _updateQueueCount();
+    await _checkConnectionAndProcessQueue();
+
+    // Check connectivity periodically
+    _connectivityTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _checkConnectionAndProcessQueue();
     });
+  }
+
+  Future<void> _updateQueueCount() async {
+    final count = await QueueService.getQueueCount();
+    if (mounted) {
+      setState(() {
+        _queueCount = count;
+      });
+    }
+  }
+
+  Future<void> _checkConnectionAndProcessQueue() async {
+    final connected = await ApiService.checkConnection();
+
+    if (mounted) {
+      setState(() {
+        _isConnected = connected;
+        _statusMessage = connected ? 'Connecte au serveur' : 'Hors ligne';
+      });
+    }
+
+    // If connected and has queue, process it
+    if (connected && _queueCount > 0) {
+      await _processQueue();
+    }
+  }
+
+  Future<void> _processQueue() async {
+    if (_queueCount == 0 || _isUploading) return;
+
+    setState(() {
+      _statusMessage = 'Envoi des fichiers en attente...';
+    });
+
+    final uploaded = await QueueService.processQueue();
+    await _updateQueueCount();
+
+    if (mounted) {
+      setState(() {
+        if (uploaded > 0) {
+          _statusMessage = '$uploaded fichier(s) envoye(s)!';
+        } else {
+          _statusMessage = _isConnected ? 'Connecte au serveur' : 'Hors ligne';
+        }
+      });
+    }
   }
 
   Future<void> _captureVideo() async {
@@ -39,11 +107,11 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
       if (video != null) {
-        await _uploadFile(File(video.path), 'video');
+        await _handleFile(File(video.path), 'video');
       }
     } catch (e) {
       setState(() {
-        _statusMessage = 'Erreur camera: $e';
+        _statusMessage = 'Erreur camera';
       });
     }
   }
@@ -56,11 +124,11 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
       if (photo != null) {
-        await _uploadFile(File(photo.path), 'photo');
+        await _handleFile(File(photo.path), 'photo');
       }
     } catch (e) {
       setState(() {
-        _statusMessage = 'Erreur camera: $e';
+        _statusMessage = 'Erreur camera';
       });
     }
   }
@@ -93,42 +161,72 @@ class _HomeScreenState extends State<HomeScreen> {
       if (choice == 'video') {
         final XFile? video = await _picker.pickVideo(source: ImageSource.gallery);
         if (video != null) {
-          await _uploadFile(File(video.path), 'video');
+          await _handleFile(File(video.path), 'video');
         }
       } else if (choice == 'photo') {
         final XFile? photo = await _picker.pickImage(source: ImageSource.gallery);
         if (photo != null) {
-          await _uploadFile(File(photo.path), 'photo');
+          await _handleFile(File(photo.path), 'photo');
         }
       }
     } catch (e) {
       setState(() {
-        _statusMessage = 'Erreur selection: $e';
+        _statusMessage = 'Erreur selection';
       });
     }
   }
 
-  Future<void> _uploadFile(File file, String type) async {
-    setState(() {
-      _isUploading = true;
-      _statusMessage = 'Upload en cours...';
-    });
+  Future<void> _handleFile(File file, String type) async {
+    if (_isConnected) {
+      // Try direct upload
+      setState(() {
+        _isUploading = true;
+        _statusMessage = 'Upload en cours...';
+      });
 
-    Map<String, dynamic>? result;
-    if (type == 'video') {
-      result = await ApiService.uploadVideo(file);
-    } else {
-      result = await ApiService.uploadPhoto(file);
-    }
-
-    setState(() {
-      _isUploading = false;
-      if (result != null) {
-        _statusMessage = '${type == 'video' ? 'Video' : 'Photo'} envoyee!';
+      Map<String, dynamic>? result;
+      if (type == 'video') {
+        result = await ApiService.uploadVideo(file);
       } else {
-        _statusMessage = 'Echec de l\'upload';
+        result = await ApiService.uploadPhoto(file);
       }
+
+      setState(() {
+        _isUploading = false;
+      });
+
+      if (result != null) {
+        setState(() {
+          _statusMessage = '${type == 'video' ? 'Video' : 'Photo'} envoyee!';
+        });
+      } else {
+        // Upload failed - add to queue
+        await _addToQueue(file, type);
+      }
+    } else {
+      // No connection - add to queue
+      await _addToQueue(file, type);
+    }
+  }
+
+  Future<void> _addToQueue(File file, String type) async {
+    await QueueService.addToQueue(file.path, type);
+    await _updateQueueCount();
+
+    setState(() {
+      _statusMessage = 'Ajoute a la file ($_queueCount en attente)';
     });
+
+    // Show snackbar
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${type == 'video' ? 'Video' : 'Photo'} ajoutee a la file d\'attente'),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   @override
@@ -140,6 +238,23 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: const Color(0xFF16213e),
         centerTitle: true,
         actions: [
+          if (_queueCount > 0)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.orange,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '$_queueCount',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.video_library),
             onPressed: () {
@@ -178,7 +293,9 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
-                  color: _isConnected ? Colors.green.withOpacity(0.2) : Colors.red.withOpacity(0.2),
+                  color: _isConnected
+                    ? Colors.green.withOpacity(0.2)
+                    : Colors.orange.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
@@ -186,19 +303,28 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     Icon(
                       _isConnected ? Icons.wifi : Icons.wifi_off,
-                      color: _isConnected ? Colors.green : Colors.red,
+                      color: _isConnected ? Colors.green : Colors.orange,
                       size: 16,
                     ),
                     const SizedBox(width: 8),
                     Text(
                       _statusMessage,
                       style: TextStyle(
-                        color: _isConnected ? Colors.green : Colors.red,
+                        color: _isConnected ? Colors.green : Colors.orange,
                       ),
                     ),
                   ],
                 ),
               ),
+
+              if (_queueCount > 0) ...[
+                const SizedBox(height: 10),
+                Text(
+                  '$_queueCount fichier(s) en attente',
+                  style: const TextStyle(color: Colors.orange, fontSize: 14),
+                ),
+              ],
+
               const SizedBox(height: 30),
 
               // Capture Video button
@@ -264,11 +390,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const SizedBox(height: 16),
 
-              // Refresh button
+              // Refresh / Process queue button
               TextButton.icon(
-                onPressed: _checkConnection,
+                onPressed: () {
+                  _checkConnectionAndProcessQueue();
+                },
                 icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('Rafraichir'),
+                label: Text(_queueCount > 0 && _isConnected
+                  ? 'Envoyer maintenant'
+                  : 'Rafraichir'),
                 style: TextButton.styleFrom(
                   foregroundColor: Colors.white54,
                 ),
