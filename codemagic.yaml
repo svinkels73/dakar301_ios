@@ -5,7 +5,7 @@ workflows:
     instance_type: mac_mini_m2
     environment:
       flutter: 3.24.0
-      xcode: 15.4
+      xcode: 16.0
       cocoapods: default
       ios_signing:
         distribution_type: app_store
@@ -14,15 +14,12 @@ workflows:
       - name: Get Flutter packages
         script: |
           flutter pub get
-      - name: Build iOS app
-        script: |
-          flutter build ipa --release --no-codesign
       - name: Set up code signing
         script: |
           xcode-project use-profiles
-      - name: Re-sign and package
+      - name: Build iOS app
         script: |
-          xcode-project build-ipa --workspace ios/Runner.xcworkspace --scheme Runner
+          flutter build ipa --release --tree-shake-icons --split-debug-info=build/debug-info
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
