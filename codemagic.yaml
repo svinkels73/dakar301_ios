@@ -17,10 +17,14 @@ workflows:
       - name: Set up code signing
         script: |
           xcode-project use-profiles
-      - name: Build iOS app
+      - name: Build iOS Release
         script: |
-          flutter build ipa --release --tree-shake-icons --split-debug-info=build/debug-info
+          flutter build ios --release
+          cd ios
+          xcodebuild -workspace Runner.xcworkspace -scheme Runner -configuration Release -archivePath build/Runner.xcarchive archive
+          xcodebuild -exportArchive -archivePath build/Runner.xcarchive -exportOptionsPlist /Users/builder/export_options.plist -exportPath build/ipa
     artifacts:
+      - ios/build/ipa/*.ipa
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
     publishing:
