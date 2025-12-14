@@ -1,14 +1,8 @@
 import 'package:flutter/material.dart';
 import 'screens/home_screen.dart';
-import 'services/background_service.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Initialize background service for offline uploads
-  await BackgroundService.initialize();
-  await BackgroundService.schedulePeriodicUploadCheck();
-
   runApp(const Dakar301App());
 }
 
