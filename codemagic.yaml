@@ -2,10 +2,10 @@ workflows:
   ios-workflow:
     name: iOS Workflow
     max_build_duration: 60
-    instance_type: mac_mini_m1
+    instance_type: mac_mini_m2
     environment:
-      flutter: stable
-      xcode: latest
+      flutter: 3.24.0
+      xcode: 15.4
       cocoapods: default
       ios_signing:
         distribution_type: app_store
@@ -14,15 +14,15 @@ workflows:
       - name: Get Flutter packages
         script: |
           flutter pub get
-      - name: Install CocoaPods dependencies
+      - name: Build iOS app
         script: |
-          cd ios && pod install
+          flutter build ipa --release --no-codesign
       - name: Set up code signing
         script: |
           xcode-project use-profiles
-      - name: Build iOS app
+      - name: Re-sign and package
         script: |
-          flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
+          xcode-project build-ipa --workspace ios/Runner.xcworkspace --scheme Runner
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
