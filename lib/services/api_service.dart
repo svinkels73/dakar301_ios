@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:path/path.dart' as path;
 
 class ApiService {
   static const String baseUrl = 'http://srv1028486.hstgr.cloud:3000';
@@ -12,7 +11,7 @@ class ApiService {
       final uri = Uri.parse('$baseUrl/upload');
       final request = http.MultipartRequest('POST', uri);
 
-      final fileName = path.basename(videoFile.path);
+      final fileName = videoFile.path.split('/').last;
       final videoTitle = title ?? fileName;
 
       request.fields['title'] = videoTitle;
