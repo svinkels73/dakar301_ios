@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'screens/home_screen.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const Dakar301App());
 }
 
@@ -16,46 +18,12 @@ class Dakar301App extends StatelessWidget {
         primarySwatch: Colors.blue,
         scaffoldBackgroundColor: const Color(0xFF1a1a2e),
         brightness: Brightness.dark,
-      ),
-      home: const TestPage(),
-    );
-  }
-}
-
-class TestPage extends StatelessWidget {
-  const TestPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF1a1a2e),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('🎬', style: TextStyle(fontSize: 80)),
-            SizedBox(height: 20),
-            Text(
-              'DAKAR 301',
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            SizedBox(height: 10),
-            Text(
-              'Version 2.1 - Test',
-              style: TextStyle(color: Colors.grey, fontSize: 16),
-            ),
-            SizedBox(height: 40),
-            Text(
-              'App is working!',
-              style: TextStyle(color: Colors.green, fontSize: 20),
-            ),
-          ],
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF16213e),
+          elevation: 0,
         ),
       ),
+      home: const HomeScreen(),
     );
   }
 }
