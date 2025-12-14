@@ -15,9 +15,40 @@ class ApiService {
       final videoTitle = title ?? fileName;
 
       request.fields['title'] = videoTitle;
+      request.fields['type'] = 'video';
       request.files.add(await http.MultipartFile.fromPath(
         'video',
         videoFile.path,
+        filename: fileName,
+      ));
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return json.decode(response.body);
+      } else {
+        return null;
+      }
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Upload a photo file
+  static Future<Map<String, dynamic>?> uploadPhoto(File photoFile, {String? title}) async {
+    try {
+      final uri = Uri.parse('$baseUrl/upload');
+      final request = http.MultipartRequest('POST', uri);
+
+      final fileName = photoFile.path.split('/').last;
+      final photoTitle = title ?? fileName;
+
+      request.fields['title'] = photoTitle;
+      request.fields['type'] = 'photo';
+      request.files.add(await http.MultipartFile.fromPath(
+        'photo',
+        photoFile.path,
         filename: fileName,
       ));
 
