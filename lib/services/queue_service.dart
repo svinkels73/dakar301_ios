@@ -10,6 +10,8 @@ class QueueItem {
   final String fileType;
   final String title;
   final DateTime createdAt;
+  final String? stage;
+  final String? category;
 
   QueueItem({
     required this.id,
@@ -17,6 +19,8 @@ class QueueItem {
     required this.fileType,
     required this.title,
     required this.createdAt,
+    this.stage,
+    this.category,
   });
 
   Map<String, dynamic> toJson() => {
@@ -25,6 +29,8 @@ class QueueItem {
     'fileType': fileType,
     'title': title,
     'createdAt': createdAt.toIso8601String(),
+    'stage': stage,
+    'category': category,
   };
 
   factory QueueItem.fromJson(Map<String, dynamic> json) => QueueItem(
@@ -33,6 +39,8 @@ class QueueItem {
     fileType: json['fileType'],
     title: json['title'],
     createdAt: DateTime.parse(json['createdAt']),
+    stage: json['stage'],
+    category: json['category'],
   );
 }
 
@@ -76,8 +84,19 @@ class QueueService {
     return queue.length;
   }
 
-  // Add file to queue
+  // Add file to queue (legacy)
   static Future<void> addToQueue(String filePath, String fileType, {String? title}) async {
+    await addToQueueWithMetadata(filePath, fileType, null, null, title: title);
+  }
+
+  // Add file to queue with stage and category metadata
+  static Future<void> addToQueueWithMetadata(
+    String filePath,
+    String fileType,
+    String? stage,
+    String? category, {
+    String? title,
+  }) async {
     try {
       final queueDir = await _getQueueDir();
       final fileName = filePath.split('/').last;
@@ -95,6 +114,8 @@ class QueueService {
         fileType: fileType,
         title: title ?? fileName,
         createdAt: DateTime.now(),
+        stage: stage,
+        category: category,
       ));
 
       await _saveQueue(queue);
@@ -134,9 +155,19 @@ class QueueService {
 
       Map<String, dynamic>? result;
       if (item.fileType == 'video') {
-        result = await ApiService.uploadVideo(file, title: item.title);
+        result = await ApiService.uploadVideo(
+          file,
+          title: item.title,
+          stage: item.stage,
+          category: item.category,
+        );
       } else {
-        result = await ApiService.uploadPhoto(file, title: item.title);
+        result = await ApiService.uploadPhoto(
+          file,
+          title: item.title,
+          stage: item.stage,
+          category: item.category,
+        );
       }
 
       if (result != null) {

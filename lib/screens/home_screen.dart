@@ -2,9 +2,12 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../models/stage.dart';
 import '../services/api_service.dart';
 import '../services/queue_service.dart';
+import '../services/stages_service.dart';
 import 'videos_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,6 +23,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isConnected = false;
   int _queueCount = 0;
   Timer? _connectivityTimer;
+
+  // Stage management
+  Stage? _currentStage;
+  String _currentStageName = 'Loading...';
 
   @override
   void initState() {
@@ -38,19 +45,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // App came back to foreground - check connection and process queue
       _checkConnectionAndProcessQueue();
+      _loadCurrentStage();
     }
   }
 
   Future<void> _initialize() async {
     await _updateQueueCount();
+    await _loadCurrentStage();
     await _checkConnectionAndProcessQueue();
 
-    // Check connectivity periodically
     _connectivityTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _checkConnectionAndProcessQueue();
     });
+  }
+
+  Future<void> _loadCurrentStage() async {
+    final stage = await StagesService.getCurrentStage();
+    if (mounted) {
+      setState(() {
+        _currentStage = stage;
+        _currentStageName = stage?.name ?? 'No stage today';
+      });
+    }
   }
 
   Future<void> _updateQueueCount() async {
@@ -68,11 +85,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) {
       setState(() {
         _isConnected = connected;
-        _statusMessage = connected ? 'Connected to server' : 'Offline';
+        _statusMessage = connected ? 'Connected' : 'Offline';
       });
     }
 
-    // If connected and has queue, process it
     if (connected && _queueCount > 0) {
       await _processQueue();
     }
@@ -93,21 +109,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (uploaded > 0) {
           _statusMessage = '$uploaded file(s) sent!';
         } else {
-          _statusMessage = _isConnected ? 'Connected to server' : 'Offline';
+          _statusMessage = _isConnected ? 'Connected' : 'Offline';
         }
       });
     }
   }
 
-  Future<void> _captureVideo() async {
+  Future<void> _captureMedia(MediaCategory category) async {
     try {
-      final XFile? video = await _picker.pickVideo(
-        source: ImageSource.camera,
-        maxDuration: const Duration(minutes: 5),
-      );
+      XFile? file;
 
-      if (video != null) {
-        await _handleFile(File(video.path), 'video');
+      if (category.isPhoto) {
+        file = await _picker.pickImage(
+          source: ImageSource.camera,
+          imageQuality: 85,
+        );
+      } else {
+        file = await _picker.pickVideo(
+          source: ImageSource.camera,
+          maxDuration: const Duration(minutes: 10),
+        );
+      }
+
+      if (file != null) {
+        await _handleFile(File(file.path), category);
       }
     } catch (e) {
       setState(() {
@@ -116,58 +141,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _capturePhoto() async {
+  Future<void> _selectFromGallery(MediaCategory category) async {
     try {
-      final XFile? photo = await _picker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 85,
-      );
+      XFile? file;
 
-      if (photo != null) {
-        await _handleFile(File(photo.path), 'photo');
+      if (category.isPhoto) {
+        file = await _picker.pickImage(source: ImageSource.gallery);
+      } else {
+        file = await _picker.pickVideo(source: ImageSource.gallery);
       }
-    } catch (e) {
-      setState(() {
-        _statusMessage = 'Camera error';
-      });
-    }
-  }
 
-  Future<void> _selectFromGallery() async {
-    try {
-      final choice = await showDialog<String>(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: const Color(0xFF16213e),
-          title: const Text('Choose', style: TextStyle(color: Colors.white)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.videocam, color: Colors.white),
-                title: const Text('Video', style: TextStyle(color: Colors.white)),
-                onTap: () => Navigator.pop(context, 'video'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo, color: Colors.white),
-                title: const Text('Photo', style: TextStyle(color: Colors.white)),
-                onTap: () => Navigator.pop(context, 'photo'),
-              ),
-            ],
-          ),
-        ),
-      );
-
-      if (choice == 'video') {
-        final XFile? video = await _picker.pickVideo(source: ImageSource.gallery);
-        if (video != null) {
-          await _handleFile(File(video.path), 'video');
-        }
-      } else if (choice == 'photo') {
-        final XFile? photo = await _picker.pickImage(source: ImageSource.gallery);
-        if (photo != null) {
-          await _handleFile(File(photo.path), 'photo');
-        }
+      if (file != null) {
+        await _handleFile(File(file.path), category);
       }
     } catch (e) {
       setState(() {
@@ -176,20 +161,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _handleFile(File file, String type) async {
+  Future<void> _handleFile(File file, MediaCategory category) async {
+    final stageId = _currentStage?.id ?? 'avant_rallye';
+
     if (_isConnected) {
-      // Try direct upload
       setState(() {
         _isUploading = true;
-        _statusMessage = 'Uploading...';
+        _statusMessage = 'Uploading ${category.displayName}...';
       });
 
-      Map<String, dynamic>? result;
-      if (type == 'video') {
-        result = await ApiService.uploadVideo(file);
-      } else {
-        result = await ApiService.uploadPhoto(file);
-      }
+      final result = await ApiService.uploadMedia(
+        file,
+        stage: stageId,
+        category: category,
+      );
 
       setState(() {
         _isUploading = false;
@@ -197,36 +182,149 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       if (result != null) {
         setState(() {
-          _statusMessage = '${type == 'video' ? 'Video' : 'Photo'} sent!';
+          _statusMessage = '${category.displayName} sent!';
         });
+        _showSuccessSnackbar(category);
       } else {
-        // Upload failed - add to queue
-        await _addToQueue(file, type);
+        await _addToQueue(file, category);
       }
     } else {
-      // No connection - add to queue
-      await _addToQueue(file, type);
+      await _addToQueue(file, category);
     }
   }
 
-  Future<void> _addToQueue(File file, String type) async {
-    await QueueService.addToQueue(file.path, type);
+  Future<void> _addToQueue(File file, MediaCategory category) async {
+    final stageId = _currentStage?.id ?? 'avant_rallye';
+
+    // Store with stage and category info
+    await QueueService.addToQueueWithMetadata(
+      file.path,
+      category.isPhoto ? 'photo' : 'video',
+      stageId,
+      category.id,
+    );
     await _updateQueueCount();
 
     setState(() {
       _statusMessage = 'Added to queue ($_queueCount pending)';
     });
 
-    // Show snackbar
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${type == 'video' ? 'Video' : 'Photo'} added to queue'),
+          content: Text('${category.displayName} added to queue'),
           backgroundColor: Colors.orange,
           duration: const Duration(seconds: 2),
         ),
       );
     }
+  }
+
+  void _showSuccessSnackbar(MediaCategory category) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 8),
+              Text('${category.displayName} uploaded to ${_currentStage?.name ?? "server"}'),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  void _showCaptureOptions(MediaCategory category) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF16213e),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 16),
+            Text(
+              category.displayName,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: Icon(
+                category.isPhoto ? Icons.camera_alt : Icons.videocam,
+                color: Colors.white,
+              ),
+              title: Text(
+                category.isPhoto ? 'Take Photo' : 'Record Video',
+                style: const TextStyle(color: Colors.white),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                _captureMedia(category);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: Colors.white),
+              title: const Text(
+                'Choose from Gallery',
+                style: TextStyle(color: Colors.white),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                _selectFromGallery(category);
+              },
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCaptureButton({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: ElevatedButton(
+          onPressed: _isUploading ? null : onPressed,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: color,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 28),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -240,7 +338,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         actions: [
           if (_queueCount > 0)
             Padding(
-              padding: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.only(right: 4),
               child: Center(
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -264,38 +362,80 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               );
             },
           ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
+              );
+              // Reload stage after returning from settings
+              _loadCurrentStage();
+            },
+          ),
         ],
       ),
-      body: Center(
+      body: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.all(20.0),
+          padding: const EdgeInsets.all(16.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.videocam, size: 80, color: Colors.white),
-              const SizedBox(height: 20),
-              const Text(
-                'DAKAR 301',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+              // Current Stage Card
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      const Color(0xFFe94560).withOpacity(0.8),
+                      const Color(0xFF16213e),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      'Current Stage',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _currentStageName,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    if (_currentStage != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '${_currentStage!.startDate.day}/${_currentStage!.startDate.month}/${_currentStage!.startDate.year}',
+                        style: const TextStyle(
+                          color: Colors.white60,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              const SizedBox(height: 10),
-              const Text(
-                'Capture & Share',
-                style: TextStyle(color: Colors.grey, fontSize: 16),
-              ),
-              const SizedBox(height: 30),
+              const SizedBox(height: 16),
 
               // Connection status
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
                   color: _isConnected
-                    ? Colors.green.withOpacity(0.2)
-                    : Colors.orange.withOpacity(0.2),
+                      ? Colors.green.withOpacity(0.2)
+                      : Colors.orange.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
@@ -318,61 +458,71 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
 
               if (_queueCount > 0) ...[
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 Text(
                   '$_queueCount file(s) pending',
                   style: const TextStyle(color: Colors.orange, fontSize: 14),
                 ),
               ],
 
-              const SizedBox(height: 30),
+              const SizedBox(height: 24),
 
-              // Capture Video button
-              ElevatedButton.icon(
-                onPressed: _isUploading ? null : _captureVideo,
-                icon: const Icon(Icons.videocam, size: 24),
-                label: const Text('Capture Video', style: TextStyle(fontSize: 16)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFe94560),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
-                  ),
+              // Title
+              const Text(
+                'Capture Media',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 16),
 
-              // Capture Photo button
-              ElevatedButton.icon(
-                onPressed: _isUploading ? null : _capturePhoto,
-                icon: const Icon(Icons.camera_alt, size: 24),
-                label: const Text('Take Photo', style: TextStyle(fontSize: 16)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF4a90d9),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
+              // Video Buttons Row
+              Row(
+                children: [
+                  _buildCaptureButton(
+                    label: 'Video\nGeneral',
+                    icon: Icons.videocam,
+                    color: const Color(0xFFe94560),
+                    onPressed: () => _showCaptureOptions(MediaCategory.videoGeneral),
                   ),
-                ),
+                  _buildCaptureButton(
+                    label: 'Video\nEnglish',
+                    icon: Icons.videocam,
+                    color: const Color(0xFF4a90d9),
+                    onPressed: () => _showCaptureOptions(MediaCategory.videoEnglish),
+                  ),
+                  _buildCaptureButton(
+                    label: 'Video\nArabic',
+                    icon: Icons.videocam,
+                    color: const Color(0xFF2ecc71),
+                    onPressed: () => _showCaptureOptions(MediaCategory.videoArabic),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
 
-              // Select from gallery button
-              OutlinedButton.icon(
-                onPressed: _isUploading ? null : _selectFromGallery,
-                icon: const Icon(Icons.photo_library, size: 22),
-                label: const Text('Choose from Gallery', style: TextStyle(fontSize: 14)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: const BorderSide(color: Colors.white54),
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
+              // Photo Button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _isUploading
+                      ? null
+                      : () => _showCaptureOptions(MediaCategory.photos),
+                  icon: const Icon(Icons.camera_alt, size: 24),
+                  label: const Text('Take Photo', style: TextStyle(fontSize: 16)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF9b59b6),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
               ),
+
               const SizedBox(height: 24),
 
               // Upload indicator
@@ -390,15 +540,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
               const SizedBox(height: 16),
 
-              // Refresh / Process queue button
+              // Refresh button
               TextButton.icon(
                 onPressed: () {
                   _checkConnectionAndProcessQueue();
+                  _loadCurrentStage();
                 },
                 icon: const Icon(Icons.refresh, size: 18),
-                label: Text(_queueCount > 0 && _isConnected
-                  ? 'Send now'
-                  : 'Refresh'),
+                label: Text(_queueCount > 0 && _isConnected ? 'Send now' : 'Refresh'),
                 style: TextButton.styleFrom(
                   foregroundColor: Colors.white54,
                 ),
