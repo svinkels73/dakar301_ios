@@ -11,6 +11,20 @@ class Stage {
     required this.endDate,
   });
 
+  Stage copyWith({
+    String? id,
+    String? name,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) {
+    return Stage(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      startDate: startDate ?? this.startDate,
+      endDate: endDate ?? this.endDate,
+    );
+  }
+
   factory Stage.fromJson(Map<String, dynamic> json) {
     return Stage(
       id: json['id'] as String,
@@ -93,4 +107,31 @@ enum MediaCategory {
 
   bool get isPhoto => this == MediaCategory.photos;
   bool get isVideo => !isPhoto;
+}
+
+// Rally info for multi-rally management
+class RallyInfo {
+  final String id;
+  final String name;
+  final int stagesCount;
+  final DateTime? startDate;
+  final DateTime? endDate;
+
+  RallyInfo({
+    required this.id,
+    required this.name,
+    required this.stagesCount,
+    this.startDate,
+    this.endDate,
+  });
+
+  factory RallyInfo.fromJson(Map<String, dynamic> json) {
+    return RallyInfo(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      stagesCount: json['stagesCount'] as int? ?? 0,
+      startDate: json['startDate'] != null ? DateTime.parse(json['startDate'] as String) : null,
+      endDate: json['endDate'] != null ? DateTime.parse(json['endDate'] as String) : null,
+    );
+  }
 }

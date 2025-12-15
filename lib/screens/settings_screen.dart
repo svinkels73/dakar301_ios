@@ -16,6 +16,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isSyncing = false;
   bool _isConnected = false;
   StagesConfig? _config;
+  List<RallyInfo> _rallies = [];
   String _errorMessage = '';
 
   @override
@@ -33,9 +34,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final connected = await ApiService.checkConnection();
     final config = await StagesService.getStagesConfig(forceRefresh: connected);
 
+    List<RallyInfo> rallies = [];
+    if (connected) {
+      rallies = await StagesService.getRallies();
+    }
+
     setState(() {
       _isConnected = connected;
       _config = config;
+      _rallies = rallies;
       _isLoading = false;
     });
   }
@@ -181,6 +188,458 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _createNewRally() async {
+    final nameController = TextEditingController();
+    DateTime startDate = DateTime.now();
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF16213e),
+          title: const Text('Create New Rally', style: TextStyle(color: Colors.white)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Rally Name',
+                    labelStyle: TextStyle(color: Colors.white60),
+                    hintText: 'e.g. Baja 2025, Africa Eco Race 2026',
+                    hintStyle: TextStyle(color: Colors.white30),
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white30),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFFe94560)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: startDate,
+                      firstDate: DateTime(2024),
+                      lastDate: DateTime(2030),
+                      builder: (context, child) {
+                        return Theme(
+                          data: Theme.of(context).copyWith(
+                            colorScheme: const ColorScheme.dark(
+                              primary: Color(0xFFe94560),
+                              surface: Color(0xFF16213e),
+                            ),
+                          ),
+                          child: child!,
+                        );
+                      },
+                    );
+                    if (picked != null) {
+                      setDialogState(() => startDate = picked);
+                    }
+                  },
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Start Date',
+                      labelStyle: TextStyle(color: Colors.white60),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white30),
+                      ),
+                      suffixIcon: Icon(Icons.calendar_today, color: Colors.white54),
+                    ),
+                    child: Text(
+                      DateFormat('dd MMMM yyyy').format(startDate),
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.blue, size: 18),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'An empty rally will be created. You can add stages later.',
+                          style: TextStyle(color: Colors.blue, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, {
+                'name': nameController.text,
+                'startDate': startDate,
+              }),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFe94560)),
+              child: const Text('Create'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null && result['name'].toString().isNotEmpty) {
+      setState(() => _isLoading = true);
+
+      final success = await StagesService.createRally(result['name']);
+
+      if (success) {
+        await _loadConfig();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Rally "${result['name']}" created'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Failed to create rally. Check server connection.';
+        });
+      }
+    }
+  }
+
+  Future<void> _switchRally(RallyInfo rally) async {
+    if (rally.name == _config?.rallyName) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213e),
+        title: const Text('Switch Rally', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'Switch to "${rally.name}"?\n\nThis will change the active rally for capturing media.',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFe94560)),
+            child: const Text('Switch'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      setState(() => _isLoading = true);
+
+      final success = await StagesService.switchRally(rally.id);
+
+      if (success) {
+        await _loadConfig();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Switched to "${rally.name}"'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Failed to switch rally';
+        });
+      }
+    }
+  }
+
+  Future<void> _deleteRally(RallyInfo rally) async {
+    if (rally.name == _config?.rallyName) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cannot delete the active rally'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213e),
+        title: const Text('Delete Rally', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'Are you sure you want to delete "${rally.name}"?\n\n'
+          'Warning: This will delete all stages configuration for this rally. '
+          'Files already uploaded will NOT be deleted.',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      setState(() => _isLoading = true);
+
+      final success = await StagesService.deleteRally(rally.id);
+
+      if (success) {
+        await _loadConfig();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Rally "${rally.name}" deleted'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      } else {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Failed to delete rally';
+        });
+      }
+    }
+  }
+
+  void _showRallyOptions(RallyInfo rally) {
+    final isActive = rally.name == _config?.rallyName;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF16213e),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                rally.name,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.play_arrow, color: Colors.green),
+              title: const Text('Activate', style: TextStyle(color: Colors.white)),
+              subtitle: const Text('Set as active rally', style: TextStyle(color: Colors.white54)),
+              enabled: !isActive,
+              onTap: isActive
+                  ? null
+                  : () {
+                      Navigator.pop(context);
+                      _switchRally(rally);
+                    },
+            ),
+            ListTile(
+              leading: const Icon(Icons.copy, color: Colors.blue),
+              title: const Text('Duplicate', style: TextStyle(color: Colors.white)),
+              subtitle: const Text('Create a copy for future event', style: TextStyle(color: Colors.white54)),
+              onTap: () {
+                Navigator.pop(context);
+                _duplicateRally(rally);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete, color: Colors.red),
+              title: const Text('Delete', style: TextStyle(color: Colors.red)),
+              subtitle: Text(
+                isActive ? 'Cannot delete active rally' : 'Remove this rally',
+                style: const TextStyle(color: Colors.white54),
+              ),
+              enabled: !isActive,
+              onTap: isActive
+                  ? null
+                  : () {
+                      Navigator.pop(context);
+                      _deleteRally(rally);
+                    },
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _duplicateRally(RallyInfo rally) async {
+    final nameController = TextEditingController(text: '${rally.name} (copy)');
+    DateTime startDate = rally.startDate ?? DateTime.now();
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF16213e),
+          title: const Text('Duplicate Rally', style: TextStyle(color: Colors.white)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'New Rally Name',
+                    labelStyle: TextStyle(color: Colors.white60),
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white30),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFFe94560)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: startDate,
+                      firstDate: DateTime(2024),
+                      lastDate: DateTime(2030),
+                      builder: (context, child) {
+                        return Theme(
+                          data: Theme.of(context).copyWith(
+                            colorScheme: const ColorScheme.dark(
+                              primary: Color(0xFFe94560),
+                              surface: Color(0xFF16213e),
+                            ),
+                          ),
+                          child: child!,
+                        );
+                      },
+                    );
+                    if (picked != null) {
+                      setDialogState(() => startDate = picked);
+                    }
+                  },
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'New Start Date',
+                      labelStyle: TextStyle(color: Colors.white60),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white30),
+                      ),
+                      suffixIcon: Icon(Icons.calendar_today, color: Colors.white54),
+                    ),
+                    child: Text(
+                      DateFormat('dd MMMM yyyy').format(startDate),
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.copy, color: Colors.green, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'All ${rally.stagesCount} stages will be copied with adjusted dates.',
+                          style: const TextStyle(color: Colors.green, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, {
+                'name': nameController.text,
+                'startDate': startDate,
+              }),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFe94560)),
+              child: const Text('Duplicate'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null && result['name'].toString().isNotEmpty) {
+      setState(() => _isLoading = true);
+
+      final success = await StagesService.duplicateRally(rally.id, result['name'], result['startDate']);
+
+      if (success) {
+        await _loadConfig();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Rally "${result['name']}" created'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Failed to duplicate rally';
+        });
+      }
+    }
+  }
+
   Future<void> _editRallyName() async {
     final controller = TextEditingController(text: _config?.rallyName ?? '');
 
@@ -308,7 +767,101 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
 
-                // Rally info
+                // Rallies section (if we have multiple rallies or connected)
+                if (_isConnected && _rallies.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.flag, color: Colors.white54, size: 18),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'RALLIES',
+                          style: TextStyle(
+                            color: Colors.white54,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        const Spacer(),
+                        TextButton.icon(
+                          onPressed: _createNewRally,
+                          icon: const Icon(Icons.add, size: 16),
+                          label: const Text('New'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFFe94560),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(
+                    height: 80,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      itemCount: _rallies.length,
+                      itemBuilder: (context, index) {
+                        final rally = _rallies[index];
+                        final isActive = rally.name == _config?.rallyName;
+
+                        return GestureDetector(
+                          onTap: () => _switchRally(rally),
+                          onLongPress: () => _showRallyOptions(rally),
+                          child: Container(
+                            width: 140,
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: isActive
+                                  ? const Color(0xFFe94560).withOpacity(0.3)
+                                  : const Color(0xFF16213e),
+                              borderRadius: BorderRadius.circular(12),
+                              border: isActive
+                                  ? Border.all(color: const Color(0xFFe94560), width: 2)
+                                  : null,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        rally.name,
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                                          fontSize: 13,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    if (isActive)
+                                      const Icon(Icons.check_circle, color: Color(0xFFe94560), size: 16),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${rally.stagesCount} stages',
+                                  style: const TextStyle(color: Colors.white54, fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Divider(color: Colors.white24),
+                ],
+
+                // Rally info (active rally)
                 if (_config != null)
                   InkWell(
                     onTap: _isConnected ? _editRallyName : null,
@@ -320,13 +873,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  _config!.rallyName,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                Row(
+                                  children: [
+                                    Text(
+                                      _config!.rallyName,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFe94560),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: const Text(
+                                        'ACTIVE',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                                 Text(
                                   '${_config!.stages.length} stages',

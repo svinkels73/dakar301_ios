@@ -170,4 +170,92 @@ class StagesService {
       // Ignore
     }
   }
+
+  // Get list of all rallies
+  static Future<List<RallyInfo>> getRallies() async {
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiService.baseUrl}/rallies'),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((r) => RallyInfo.fromJson(r as Map<String, dynamic>)).toList();
+      }
+    } catch (e) {
+      // Server not available
+    }
+    return [];
+  }
+
+  // Create a new rally
+  static Future<bool> createRally(String rallyName, {List<Stage>? stages}) async {
+    try {
+      final body = {
+        'name': rallyName,
+        if (stages != null) 'stages': stages.map((s) => s.toJson()).toList(),
+      };
+
+      final response = await http.post(
+        Uri.parse('${ApiService.baseUrl}/rallies'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode(body),
+      ).timeout(const Duration(seconds: 10));
+
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Switch to a different rally
+  static Future<bool> switchRally(String rallyId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiService.baseUrl}/rallies/$rallyId/activate'),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        // Refresh cache with new rally data
+        await getStagesConfig(forceRefresh: true);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Delete a rally
+  static Future<bool> deleteRally(String rallyId) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('${ApiService.baseUrl}/rallies/$rallyId'),
+      ).timeout(const Duration(seconds: 10));
+
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Duplicate an existing rally with new name and dates
+  static Future<bool> duplicateRally(String sourceRallyId, String newName, DateTime newStartDate) async {
+    try {
+      final body = {
+        'name': newName,
+        'startDate': newStartDate.toIso8601String().split('T')[0],
+      };
+
+      final response = await http.post(
+        Uri.parse('${ApiService.baseUrl}/rallies/$sourceRallyId/duplicate'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode(body),
+      ).timeout(const Duration(seconds: 10));
+
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      return false;
+    }
+  }
 }
