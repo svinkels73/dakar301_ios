@@ -164,6 +164,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _handleFile(File file, MediaCategory category) async {
     final stageId = _currentStage?.id ?? 'avant_rallye';
 
+    // Get capture date from file modification time (best approximation without EXIF library)
+    DateTime? captureDate;
+    try {
+      final stat = await file.stat();
+      captureDate = stat.modified;
+    } catch (_) {}
+
     if (_isConnected) {
       setState(() {
         _isUploading = true;
@@ -174,6 +181,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         file,
         stage: stageId,
         category: category,
+        captureDate: captureDate,
       );
 
       setState(() {
@@ -186,22 +194,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         });
         _showSuccessSnackbar(category);
       } else {
-        await _addToQueue(file, category);
+        await _addToQueue(file, category, captureDate);
       }
     } else {
-      await _addToQueue(file, category);
+      await _addToQueue(file, category, captureDate);
     }
   }
 
-  Future<void> _addToQueue(File file, MediaCategory category) async {
+  Future<void> _addToQueue(File file, MediaCategory category, [DateTime? captureDate]) async {
     final stageId = _currentStage?.id ?? 'avant_rallye';
 
-    // Store with stage and category info
+    // Store with stage, category, and capture date info
     await QueueService.addToQueueWithMetadata(
       file.path,
       category.isPhoto ? 'photo' : 'video',
       stageId,
       category.id,
+      captureDate: captureDate,
     );
     await _updateQueueCount();
 

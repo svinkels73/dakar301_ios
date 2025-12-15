@@ -12,6 +12,7 @@ class ApiService {
     required String stage,
     required MediaCategory category,
     String? title,
+    DateTime? captureDate,
   }) async {
     try {
       final uri = Uri.parse('$baseUrl/upload');
@@ -24,6 +25,11 @@ class ApiService {
       request.fields['stage'] = stage;
       request.fields['category'] = category.id;
       request.fields['type'] = category.isPhoto ? 'photo' : 'video';
+
+      // Send capture date for server-side stage classification
+      if (captureDate != null) {
+        request.fields['captureDate'] = captureDate.toIso8601String();
+      }
 
       request.files.add(await http.MultipartFile.fromPath(
         category.isPhoto ? 'photo' : 'video',
@@ -45,7 +51,7 @@ class ApiService {
   }
 
   // Legacy upload video (for backward compatibility)
-  static Future<Map<String, dynamic>?> uploadVideo(File videoFile, {String? title, String? stage, String? category}) async {
+  static Future<Map<String, dynamic>?> uploadVideo(File videoFile, {String? title, String? stage, String? category, DateTime? captureDate}) async {
     try {
       final uri = Uri.parse('$baseUrl/upload');
       final request = http.MultipartRequest('POST', uri);
@@ -57,6 +63,7 @@ class ApiService {
       request.fields['type'] = 'video';
       if (stage != null) request.fields['stage'] = stage;
       if (category != null) request.fields['category'] = category;
+      if (captureDate != null) request.fields['captureDate'] = captureDate.toIso8601String();
 
       request.files.add(await http.MultipartFile.fromPath(
         'video',
@@ -78,7 +85,7 @@ class ApiService {
   }
 
   // Legacy upload photo (for backward compatibility)
-  static Future<Map<String, dynamic>?> uploadPhoto(File photoFile, {String? title, String? stage, String? category}) async {
+  static Future<Map<String, dynamic>?> uploadPhoto(File photoFile, {String? title, String? stage, String? category, DateTime? captureDate}) async {
     try {
       final uri = Uri.parse('$baseUrl/upload');
       final request = http.MultipartRequest('POST', uri);
@@ -90,6 +97,7 @@ class ApiService {
       request.fields['type'] = 'photo';
       if (stage != null) request.fields['stage'] = stage;
       if (category != null) request.fields['category'] = category;
+      if (captureDate != null) request.fields['captureDate'] = captureDate.toIso8601String();
 
       request.files.add(await http.MultipartFile.fromPath(
         'photo',

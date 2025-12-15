@@ -12,6 +12,7 @@ class QueueItem {
   final DateTime createdAt;
   final String? stage;
   final String? category;
+  final DateTime? captureDate; // Date when media was captured (from EXIF/metadata)
 
   QueueItem({
     required this.id,
@@ -21,6 +22,7 @@ class QueueItem {
     required this.createdAt,
     this.stage,
     this.category,
+    this.captureDate,
   });
 
   Map<String, dynamic> toJson() => {
@@ -31,6 +33,7 @@ class QueueItem {
     'createdAt': createdAt.toIso8601String(),
     'stage': stage,
     'category': category,
+    'captureDate': captureDate?.toIso8601String(),
   };
 
   factory QueueItem.fromJson(Map<String, dynamic> json) => QueueItem(
@@ -41,6 +44,7 @@ class QueueItem {
     createdAt: DateTime.parse(json['createdAt']),
     stage: json['stage'],
     category: json['category'],
+    captureDate: json['captureDate'] != null ? DateTime.tryParse(json['captureDate']) : null,
   );
 }
 
@@ -96,6 +100,7 @@ class QueueService {
     String? stage,
     String? category, {
     String? title,
+    DateTime? captureDate,
   }) async {
     try {
       final queueDir = await _getQueueDir();
@@ -105,6 +110,17 @@ class QueueService {
 
       // Copy file to queue directory
       await File(filePath).copy(newPath);
+
+      // Get capture date from file modification time if not provided
+      DateTime? mediaCaptureDate = captureDate;
+      if (mediaCaptureDate == null) {
+        try {
+          final file = File(filePath);
+          final stat = await file.stat();
+          // Use file modification time as capture date fallback
+          mediaCaptureDate = stat.modified;
+        } catch (_) {}
+      }
 
       // Add to queue list
       final queue = await getQueue();
@@ -116,6 +132,7 @@ class QueueService {
         createdAt: DateTime.now(),
         stage: stage,
         category: category,
+        captureDate: mediaCaptureDate,
       ));
 
       await _saveQueue(queue);
@@ -160,6 +177,7 @@ class QueueService {
           title: item.title,
           stage: item.stage,
           category: item.category,
+          captureDate: item.captureDate,
         );
       } else {
         result = await ApiService.uploadPhoto(
@@ -167,6 +185,7 @@ class QueueService {
           title: item.title,
           stage: item.stage,
           category: item.category,
+          captureDate: item.captureDate,
         );
       }
 
