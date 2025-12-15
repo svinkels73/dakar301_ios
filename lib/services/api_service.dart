@@ -133,6 +133,31 @@ class ApiService {
     }
   }
 
+  // Get all media (videos + photos)
+  static Future<List<Map<String, dynamic>>> getAllMedia() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/media'));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.cast<Map<String, dynamic>>();
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // Delete media by id
+  static Future<bool> deleteMedia(String mediaId) async {
+    try {
+      final response = await http.delete(Uri.parse('$baseUrl/media/$mediaId'));
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
   // Delete a video
   static Future<bool> deleteVideo(String videoId) async {
     try {
