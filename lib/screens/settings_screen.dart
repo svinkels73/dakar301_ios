@@ -76,7 +76,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _addStage() async {
     final result = await showDialog<Stage>(
       context: context,
-      builder: (context) => const AddStageDialog(),
+      builder: (context) => const StageEditDialog(isNew: true),
     );
 
     if (result != null) {
@@ -103,6 +103,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _editStage(Stage stage) async {
+    final result = await showDialog<Stage>(
+      context: context,
+      builder: (context) => StageEditDialog(isNew: false, stage: stage),
+    );
+
+    if (result != null) {
+      setState(() => _isLoading = true);
+
+      final success = await StagesService.addStage(result);
+
+      if (success) {
+        await _loadConfig();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Stage "${result.name}" updated'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Failed to update stage.';
+        });
+      }
+    }
+  }
+
   Future<void> _deleteStage(Stage stage) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -110,7 +140,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         backgroundColor: const Color(0xFF16213e),
         title: const Text('Delete Stage', style: TextStyle(color: Colors.white)),
         content: Text(
-          'Are you sure you want to delete "${stage.name}"?',
+          'Are you sure you want to delete "${stage.name}"?\n\nFiles already uploaded will be preserved.',
           style: const TextStyle(color: Colors.white70),
         ),
         actions: [
@@ -146,6 +176,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
         setState(() {
           _isLoading = false;
           _errorMessage = 'Failed to delete stage';
+        });
+      }
+    }
+  }
+
+  Future<void> _editRallyName() async {
+    final controller = TextEditingController(text: _config?.rallyName ?? '');
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213e),
+        title: const Text('Edit Rally Name', style: TextStyle(color: Colors.white)),
+        content: TextField(
+          controller: controller,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            labelText: 'Rally Name',
+            labelStyle: TextStyle(color: Colors.white60),
+            enabledBorder: OutlineInputBorder(
+              borderSide: BorderSide(color: Colors.white30),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFFe94560)),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFe94560)),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty && _config != null) {
+      final newConfig = StagesConfig(
+        rallyName: result,
+        stages: _config!.stages,
+      );
+
+      setState(() => _isLoading = true);
+      final success = await StagesService.updateStagesConfig(newConfig);
+
+      if (success) {
+        await _loadConfig();
+      } else {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Failed to update rally name';
         });
       }
     }
@@ -224,27 +310,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                 // Rally info
                 if (_config != null)
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _config!.rallyName,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
+                  InkWell(
+                    onTap: _isConnected ? _editRallyName : null,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _config!.rallyName,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  '${_config!.stages.length} stages',
+                                  style: const TextStyle(color: Colors.white60),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
-                        Text(
-                          '${_config!.stages.length} stages',
-                          style: const TextStyle(color: Colors.white60),
-                        ),
-                      ],
+                          if (_isConnected)
+                            const Icon(Icons.edit, color: Colors.white54, size: 20),
+                        ],
+                      ),
                     ),
                   ),
+
+                const Divider(color: Colors.white24),
 
                 // Stages list
                 Expanded(
@@ -255,14 +353,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             style: TextStyle(color: Colors.white54),
                           ),
                         )
-                      : ListView.builder(
+                      : ReorderableListView.builder(
                           itemCount: _config!.stages.length,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          onReorder: (oldIndex, newIndex) {
+                            // TODO: Implement reorder
+                          },
                           itemBuilder: (context, index) {
                             final stage = _config!.stages[index];
                             final isCurrent = stage.containsDate(DateTime.now());
+                            final isMultiDay = stage.startDate != stage.endDate;
 
                             return Card(
+                              key: ValueKey(stage.id),
                               color: isCurrent
                                   ? const Color(0xFFe94560).withOpacity(0.3)
                                   : const Color(0xFF16213e),
@@ -290,22 +393,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   stage.name,
                                   style: TextStyle(
                                     color: Colors.white,
-                                    fontWeight:
-                                        isCurrent ? FontWeight.bold : FontWeight.normal,
+                                    fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
                                   ),
                                 ),
-                                subtitle: Text(
-                                  stage.startDate == stage.endDate
-                                      ? _formatDate(stage.startDate)
-                                      : '${_formatDate(stage.startDate)} - ${_formatDate(stage.endDate)}',
-                                  style: const TextStyle(color: Colors.white60),
+                                subtitle: Row(
+                                  children: [
+                                    Text(
+                                      isMultiDay
+                                          ? '${_formatDate(stage.startDate)} - ${_formatDate(stage.endDate)}'
+                                          : _formatDate(stage.startDate),
+                                      style: const TextStyle(color: Colors.white60, fontSize: 12),
+                                    ),
+                                    if (isMultiDay) ...[
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.withOpacity(0.3),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Text(
+                                          '${stage.endDate.difference(stage.startDate).inDays + 1} days',
+                                          style: const TextStyle(color: Colors.blue, fontSize: 10),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                                 trailing: isCurrent
                                     ? Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                         decoration: BoxDecoration(
                                           color: const Color(0xFFe94560),
                                           borderRadius: BorderRadius.circular(12),
@@ -319,13 +436,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                           ),
                                         ),
                                       )
-                                    : IconButton(
-                                        icon: const Icon(
-                                          Icons.delete_outline,
-                                          color: Colors.white54,
-                                        ),
-                                        onPressed: () => _deleteStage(stage),
-                                      ),
+                                    : _isConnected
+                                        ? PopupMenuButton<String>(
+                                            icon: const Icon(Icons.more_vert, color: Colors.white54),
+                                            color: const Color(0xFF16213e),
+                                            onSelected: (value) {
+                                              if (value == 'edit') {
+                                                _editStage(stage);
+                                              } else if (value == 'delete') {
+                                                _deleteStage(stage);
+                                              }
+                                            },
+                                            itemBuilder: (context) => [
+                                              const PopupMenuItem(
+                                                value: 'edit',
+                                                child: Row(
+                                                  children: [
+                                                    Icon(Icons.edit, color: Colors.white70, size: 20),
+                                                    SizedBox(width: 8),
+                                                    Text('Edit', style: TextStyle(color: Colors.white)),
+                                                  ],
+                                                ),
+                                              ),
+                                              const PopupMenuItem(
+                                                value: 'delete',
+                                                child: Row(
+                                                  children: [
+                                                    Icon(Icons.delete, color: Colors.red, size: 20),
+                                                    SizedBox(width: 8),
+                                                    Text('Delete', style: TextStyle(color: Colors.red)),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          )
+                                        : null,
+                                onTap: _isConnected ? () => _editStage(stage) : null,
                               ),
                             );
                           },
@@ -356,18 +502,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 }
 
-class AddStageDialog extends StatefulWidget {
-  const AddStageDialog({super.key});
+class StageEditDialog extends StatefulWidget {
+  final bool isNew;
+  final Stage? stage;
+
+  const StageEditDialog({super.key, required this.isNew, this.stage});
 
   @override
-  State<AddStageDialog> createState() => _AddStageDialogState();
+  State<StageEditDialog> createState() => _StageEditDialogState();
 }
 
-class _AddStageDialogState extends State<AddStageDialog> {
-  final _nameController = TextEditingController();
-  final _idController = TextEditingController();
-  DateTime _startDate = DateTime.now();
-  DateTime _endDate = DateTime.now();
+class _StageEditDialogState extends State<StageEditDialog> {
+  late TextEditingController _nameController;
+  late TextEditingController _idController;
+  late DateTime _startDate;
+  late DateTime _endDate;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.stage?.name ?? '');
+    _idController = TextEditingController(text: widget.stage?.id ?? '');
+    _startDate = widget.stage?.startDate ?? DateTime.now();
+    _endDate = widget.stage?.endDate ?? DateTime.now();
+  }
 
   @override
   void dispose() {
@@ -377,19 +535,32 @@ class _AddStageDialogState extends State<AddStageDialog> {
   }
 
   void _autoGenerateId() {
-    final name = _nameController.text.trim().toLowerCase();
-    final id = name
-        .replaceAll(RegExp(r'[^a-z0-9\s]'), '')
-        .replaceAll(RegExp(r'\s+'), '_');
-    _idController.text = id;
+    if (widget.isNew) {
+      final name = _nameController.text.trim().toLowerCase();
+      final id = name
+          .replaceAll(RegExp(r'[^a-z0-9\s]'), '')
+          .replaceAll(RegExp(r'\s+'), '_');
+      _idController.text = id;
+    }
   }
 
   Future<void> _selectStartDate() async {
     final picked = await showDatePicker(
       context: context,
       initialDate: _startDate,
-      firstDate: DateTime(2025),
+      firstDate: DateTime(2024),
       lastDate: DateTime(2030),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: Color(0xFFe94560),
+              surface: Color(0xFF16213e),
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
     if (picked != null) {
       setState(() {
@@ -407,6 +578,17 @@ class _AddStageDialogState extends State<AddStageDialog> {
       initialDate: _endDate,
       firstDate: _startDate,
       lastDate: DateTime(2030),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: Color(0xFFe94560),
+              surface: Color(0xFF16213e),
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
     if (picked != null) {
       setState(() => _endDate = picked);
@@ -441,7 +623,10 @@ class _AddStageDialogState extends State<AddStageDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: const Color(0xFF16213e),
-      title: const Text('Add Stage', style: TextStyle(color: Colors.white)),
+      title: Text(
+        widget.isNew ? 'Add Stage' : 'Edit Stage',
+        style: const TextStyle(color: Colors.white),
+      ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -466,62 +651,88 @@ class _AddStageDialogState extends State<AddStageDialog> {
             const SizedBox(height: 16),
             TextField(
               controller: _idController,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                labelText: 'Stage ID',
-                labelStyle: TextStyle(color: Colors.white60),
+              enabled: widget.isNew,
+              style: TextStyle(color: widget.isNew ? Colors.white : Colors.white54),
+              decoration: InputDecoration(
+                labelText: 'Stage ID (folder name)',
+                labelStyle: const TextStyle(color: Colors.white60),
                 hintText: 'e.g. etape_13',
-                hintStyle: TextStyle(color: Colors.white30),
-                enabledBorder: OutlineInputBorder(
+                hintStyle: const TextStyle(color: Colors.white30),
+                helperText: widget.isNew ? null : 'ID cannot be changed',
+                helperStyle: const TextStyle(color: Colors.orange),
+                enabledBorder: const OutlineInputBorder(
                   borderSide: BorderSide(color: Colors.white30),
                 ),
-                focusedBorder: OutlineInputBorder(
+                disabledBorder: const OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.white10),
+                ),
+                focusedBorder: const OutlineInputBorder(
                   borderSide: BorderSide(color: Color(0xFFe94560)),
                 ),
               ),
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: InkWell(
-                    onTap: _selectStartDate,
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Start Date',
-                        labelStyle: TextStyle(color: Colors.white60),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.white30),
-                        ),
-                      ),
-                      child: Text(
-                        DateFormat('dd/MM/yyyy').format(_startDate),
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
+
+            // Start Date
+            InkWell(
+              onTap: _selectStartDate,
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Start Date',
+                  labelStyle: TextStyle(color: Colors.white60),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white30),
                   ),
+                  suffixIcon: Icon(Icons.calendar_today, color: Colors.white54),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: InkWell(
-                    onTap: _selectEndDate,
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'End Date',
-                        labelStyle: TextStyle(color: Colors.white60),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.white30),
-                        ),
-                      ),
-                      child: Text(
-                        DateFormat('dd/MM/yyyy').format(_endDate),
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
-                  ),
+                child: Text(
+                  DateFormat('dd MMMM yyyy').format(_startDate),
+                  style: const TextStyle(color: Colors.white),
                 ),
-              ],
+              ),
             ),
+            const SizedBox(height: 16),
+
+            // End Date
+            InkWell(
+              onTap: _selectEndDate,
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'End Date',
+                  labelStyle: TextStyle(color: Colors.white60),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white30),
+                  ),
+                  suffixIcon: Icon(Icons.calendar_today, color: Colors.white54),
+                ),
+                child: Text(
+                  DateFormat('dd MMMM yyyy').format(_endDate),
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+            ),
+
+            if (_startDate != _endDate) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.info_outline, color: Colors.blue, size: 16),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Multi-day stage: ${_endDate.difference(_startDate).inDays + 1} days',
+                      style: const TextStyle(color: Colors.blue, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -535,7 +746,7 @@ class _AddStageDialogState extends State<AddStageDialog> {
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFFe94560),
           ),
-          child: const Text('Add'),
+          child: Text(widget.isNew ? 'Add' : 'Save'),
         ),
       ],
     );
