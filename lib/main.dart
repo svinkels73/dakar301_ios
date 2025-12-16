@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'screens/home_screen.dart';
 import 'services/background_sync_service.dart';
@@ -5,8 +6,15 @@ import 'services/background_sync_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize background sync service
-  await BackgroundSyncService.initialize();
+  // Initialize background sync service (Android only for now)
+  // iOS workmanager requires additional setup and may crash on some devices
+  if (Platform.isAndroid) {
+    try {
+      await BackgroundSyncService.initialize();
+    } catch (e) {
+      print('BackgroundSync initialization failed: $e');
+    }
+  }
 
   runApp(const Dakar301App());
 }
