@@ -59,12 +59,6 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
-		<string>processing</string>
-	</array>
-	<key>BGTaskSchedulerPermittedIdentifiers</key>
-	<array>
-		<string>com.dakar301.dakar301.backgroundSyncTask</string>
-		<string>com.dakar301.dakar301.periodicSyncTask</string>
 	</array>
 </dict>
 </plist>
