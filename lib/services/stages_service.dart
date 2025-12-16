@@ -6,7 +6,10 @@ import 'api_service.dart';
 
 class StagesService {
   static const String _cacheKey = 'stages_config_cache';
+  static const String _selectedRallyKey = 'selected_rally_id';
+  static const String _ralliesCache = 'rallies_cache';
   static StagesConfig? _cachedConfig;
+  static String? _selectedRallyId;
 
   // Default configuration for offline use
   static StagesConfig get defaultConfig => StagesConfig(
@@ -31,17 +34,34 @@ class StagesService {
     ],
   );
 
-  // Get stages configuration from server or cache
+  // Get the currently selected rally ID (local to this device)
+  static Future<String?> getSelectedRallyId() async {
+    if (_selectedRallyId != null) return _selectedRallyId;
+
+    final prefs = await SharedPreferences.getInstance();
+    _selectedRallyId = prefs.getString(_selectedRallyKey);
+    return _selectedRallyId;
+  }
+
+  // Get stages configuration for the selected rally
   static Future<StagesConfig> getStagesConfig({bool forceRefresh = false}) async {
     // Return cached if available and not forcing refresh
     if (_cachedConfig != null && !forceRefresh) {
       return _cachedConfig!;
     }
 
-    // Try to fetch from server
+    // Get selected rally ID
+    final selectedRallyId = await getSelectedRallyId();
+
+    // Try to fetch config for selected rally from server
     try {
+      String url = '${ApiService.baseUrl}/stages';
+      if (selectedRallyId != null) {
+        url = '${ApiService.baseUrl}/rallies/$selectedRallyId/config';
+      }
+
       final response = await http.get(
-        Uri.parse('${ApiService.baseUrl}/stages'),
+        Uri.parse(url),
       ).timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
@@ -208,21 +228,34 @@ class StagesService {
     }
   }
 
-  // Switch to a different rally
+  // Switch to a different rally (LOCAL ONLY - does not affect server)
   static Future<bool> switchRally(String rallyId) async {
     try {
-      final response = await http.post(
-        Uri.parse('${ApiService.baseUrl}/rallies/$rallyId/activate'),
+      // Save selection locally
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_selectedRallyKey, rallyId);
+      _selectedRallyId = rallyId;
+
+      // Clear cache to force reload with new rally
+      _cachedConfig = null;
+
+      // Fetch the new rally's config from server
+      final response = await http.get(
+        Uri.parse('${ApiService.baseUrl}/rallies/$rallyId/config'),
       ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        // Refresh cache with new rally data
-        await getStagesConfig(forceRefresh: true);
+        final config = StagesConfig.fromJson(json.decode(response.body));
+        _cachedConfig = config;
+        await _saveToCache(config);
         return true;
       }
-      return false;
+
+      // Even if server fails, selection is saved locally
+      return true;
     } catch (e) {
-      return false;
+      // Selection saved locally even if server unavailable
+      return true;
     }
   }
 
