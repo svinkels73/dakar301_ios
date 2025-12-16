@@ -6,6 +6,7 @@ import '../models/stage.dart';
 import '../services/api_service.dart';
 import '../services/queue_service.dart';
 import '../services/stages_service.dart';
+import '../services/background_sync_service.dart';
 import 'videos_screen.dart';
 import 'settings_screen.dart';
 
@@ -214,6 +215,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     await _updateQueueCount();
 
+    // Trigger background sync to upload when network is available
+    await BackgroundSyncService.triggerImmediateSync();
+
     setState(() {
       _statusMessage = 'Added to queue ($_queueCount pending)';
     });
@@ -221,7 +225,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${category.displayName} added to queue'),
+          content: Text('${category.displayName} added to queue - will upload when online'),
           backgroundColor: Colors.orange,
           duration: const Duration(seconds: 2),
         ),

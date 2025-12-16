@@ -1,36 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'screens/home_screen.dart';
-import 'services/queue_service.dart';
-import 'services/api_service.dart';
+import 'services/background_sync_service.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Setup background fetch handler
-  _setupBackgroundChannel();
+  // Initialize background sync service
+  await BackgroundSyncService.initialize();
 
   runApp(const Dakar301App());
-}
-
-void _setupBackgroundChannel() {
-  const channel = MethodChannel('com.dakar301/background');
-
-  channel.setMethodCallHandler((call) async {
-    if (call.method == 'processQueue') {
-      // Process the upload queue in background
-      try {
-        final connected = await ApiService.checkConnection();
-        if (!connected) return false;
-
-        final uploaded = await QueueService.processQueue();
-        return uploaded > 0;
-      } catch (e) {
-        return false;
-      }
-    }
-    return false;
-  });
 }
 
 class Dakar301App extends StatelessWidget {
