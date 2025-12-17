@@ -318,7 +318,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Scaffold(
       backgroundColor: const Color(0xFF1a1a2e),
       appBar: AppBar(
-        title: const Text('DAKAR 301'),
+        title: const Text('Akeel Media'),
         backgroundColor: const Color(0xFF16213e),
         centerTitle: true,
         actions: [

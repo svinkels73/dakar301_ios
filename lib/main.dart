@@ -27,7 +27,7 @@ class Dakar301App extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'DAKAR 301',
+      title: 'Akeel Media',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.blue,
