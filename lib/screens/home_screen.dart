@@ -219,9 +219,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       captureDate: captureDate,
     );
     await _updateQueueCount();
-
-    // Trigger background sync to upload when network is available
-    BackgroundSyncService.triggerImmediateSync();  // Non-blocking
+    // Note: Upload is triggered by _handleFile() calling _processQueue()
+    // BackgroundSyncService is only for offline/background scenarios
   }
 
   void _showCaptureOptions(MediaCategory category) {
