@@ -19,10 +19,11 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final ImagePicker _picker = ImagePicker();
-  bool _isUploading = false;
+  bool _isProcessingQueue = false;
   String _statusMessage = '';
   bool _isConnected = false;
   int _queueCount = 0;
+  int _uploadingCount = 0;  // Number of files currently uploading
   Timer? _connectivityTimer;
 
   // Stage management
@@ -96,17 +97,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _processQueue() async {
-    if (_queueCount == 0 || _isUploading) return;
+    if (_queueCount == 0 || _isProcessingQueue) return;
 
-    setState(() {
-      _statusMessage = 'Sending queued files...';
-    });
-
-    final uploaded = await QueueService.processQueue();
-    await _updateQueueCount();
+    _isProcessingQueue = true;
 
     if (mounted) {
       setState(() {
+        _uploadingCount = _queueCount;
+        _statusMessage = 'Uploading $_uploadingCount file(s)...';
+      });
+    }
+
+    // Process queue in background - this doesn't block the UI
+    final uploaded = await QueueService.processQueue();
+    await _updateQueueCount();
+
+    _isProcessingQueue = false;
+
+    if (mounted) {
+      setState(() {
+        _uploadingCount = 0;
         if (uploaded > 0) {
           _statusMessage = '$uploaded file(s) sent!';
         } else {
@@ -163,8 +173,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _handleFile(File file, MediaCategory category) async {
-    final stageId = _currentStage?.id ?? 'avant_rallye';
-
     // Get capture date from file modification time (best approximation without EXIF library)
     DateTime? captureDate;
     try {
@@ -172,33 +180,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       captureDate = stat.modified;
     } catch (_) {}
 
-    if (_isConnected) {
-      setState(() {
-        _isUploading = true;
-        _statusMessage = 'Uploading ${category.displayName}...';
-      });
+    // Always add to queue first - this allows immediate capture of next video
+    await _addToQueue(file, category, captureDate);
 
-      final result = await ApiService.uploadMedia(
-        file,
-        stage: stageId,
-        category: category,
-        captureDate: captureDate,
+    // Show confirmation
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Text('${category.displayName} queued'),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 1),
+        ),
       );
+    }
 
-      setState(() {
-        _isUploading = false;
-      });
-
-      if (result != null) {
-        setState(() {
-          _statusMessage = '${category.displayName} sent!';
-        });
-        _showSuccessSnackbar(category);
-      } else {
-        await _addToQueue(file, category, captureDate);
-      }
-    } else {
-      await _addToQueue(file, category, captureDate);
+    // If connected, trigger background upload (non-blocking)
+    if (_isConnected && !_isProcessingQueue) {
+      // Don't await - let it run in background
+      _processQueue();
     }
   }
 
@@ -216,39 +221,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _updateQueueCount();
 
     // Trigger background sync to upload when network is available
-    await BackgroundSyncService.triggerImmediateSync();
-
-    setState(() {
-      _statusMessage = 'Added to queue ($_queueCount pending)';
-    });
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${category.displayName} added to queue - will upload when online'),
-          backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-
-  void _showSuccessSnackbar(MediaCategory category) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle, color: Colors.white),
-              const SizedBox(width: 8),
-              Text('${category.displayName} uploaded to ${_currentStage?.name ?? "server"}'),
-            ],
-          ),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
+    BackgroundSyncService.triggerImmediateSync();  // Non-blocking
   }
 
   void _showCaptureOptions(MediaCategory category) {
@@ -314,7 +287,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4),
         child: ElevatedButton(
-          onPressed: _isUploading ? null : onPressed,
+          onPressed: onPressed,  // Always enabled - upload is now in background
           style: ElevatedButton.styleFrom(
             backgroundColor: color,
             foregroundColor: Colors.white,
@@ -520,9 +493,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: _isUploading
-                      ? null
-                      : () => _showCaptureOptions(MediaCategory.photos),
+                  onPressed: () => _showCaptureOptions(MediaCategory.photos),  // Always enabled
                   icon: const Icon(Icons.camera_alt, size: 24),
                   label: const Text('Take Photo', style: TextStyle(fontSize: 16)),
                   style: ElevatedButton.styleFrom(
@@ -538,17 +509,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
               const SizedBox(height: 24),
 
-              // Upload indicator
-              if (_isUploading)
-                const Column(
-                  children: [
-                    CircularProgressIndicator(color: Color(0xFFe94560)),
-                    SizedBox(height: 10),
-                    Text(
-                      'Uploading...',
-                      style: TextStyle(color: Colors.white70),
-                    ),
-                  ],
+              // Upload progress indicator (non-blocking)
+              if (_isProcessingQueue)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFe94560).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFe94560),
+                          strokeWidth: 2,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Uploading $_uploadingCount file(s)...',
+                        style: const TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                    ],
+                  ),
                 ),
 
               const SizedBox(height: 16),
