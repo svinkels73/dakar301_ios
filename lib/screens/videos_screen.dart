@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
+import 'media_player_screen.dart';
 
 class VideosScreen extends StatefulWidget {
   const VideosScreen({super.key});
@@ -124,6 +126,26 @@ class _VideosScreenState extends State<VideosScreen> {
     }
   }
 
+  // Open media player
+  void _openMediaPlayer(Map<String, dynamic> media) {
+    final url = 'http://srv1028486.hstgr.cloud:3000${media['url'] ?? ''}';
+    final title = media['originalName'] ?? media['filename'] ?? 'Media';
+    final type = media['type'] ?? 'video';
+    final size = _formatSize(media['size']);
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MediaPlayerScreen(
+          url: url,
+          title: title,
+          type: type,
+          size: size,
+        ),
+      ),
+    );
+  }
+
   // Format file size
   String _formatSize(dynamic bytes) {
     if (bytes == null) return '';
@@ -155,12 +177,101 @@ class _VideosScreenState extends State<VideosScreen> {
             )
           : Column(
               children: [
+                // Server URL Card
+                _buildServerUrlCard(),
                 // Breadcrumb navigation
                 _buildBreadcrumb(),
                 // Content
                 Expanded(child: _buildContent()),
               ],
             ),
+    );
+  }
+
+  // Server URL sharing card
+  Widget _buildServerUrlCard() {
+    const serverUrl = 'http://srv1028486.hstgr.cloud:3000';
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF4a90d9).withOpacity(0.2),
+            const Color(0xFF16213e),
+          ],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF4a90d9).withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF4a90d9).withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.language, color: Color(0xFF4a90d9), size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Share this link to view media',
+                  style: TextStyle(color: Colors.white70, fontSize: 11),
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  serverUrl,
+                  style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.copy_rounded, color: Color(0xFF4a90d9), size: 22),
+            onPressed: () {
+              Clipboard.setData(const ClipboardData(text: serverUrl));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Row(
+                    children: [
+                      Icon(Icons.check, color: Colors.white, size: 18),
+                      SizedBox(width: 8),
+                      Text('URL copied!'),
+                    ],
+                  ),
+                  backgroundColor: const Color(0xFF2ecc71),
+                  duration: const Duration(seconds: 2),
+                  behavior: SnackBarBehavior.floating,
+                  margin: const EdgeInsets.all(16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              );
+            },
+            tooltip: 'Copy URL',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(Icons.share_rounded, color: Color(0xFFe94560), size: 22),
+            onPressed: () {
+              Share.share('View our rally media at:\n$serverUrl');
+            },
+            tooltip: 'Share URL',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+        ],
+      ),
     );
   }
 
@@ -498,14 +609,15 @@ class _VideosScreenState extends State<VideosScreen> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            // Thumbnail
-            GestureDetector(
-              onTap: () => _openInBrowser(media),
-              child: Container(
+      child: InkWell(
+        onTap: () => _openMediaPlayer(media),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              // Thumbnail with play button
+              Container(
                 width: 70,
                 height: 70,
                 decoration: BoxDecoration(
@@ -519,71 +631,81 @@ class _VideosScreenState extends State<VideosScreen> {
                   size: 36,
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
-            // Info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w500,
-                      fontSize: 14,
+              const SizedBox(width: 12),
+              // Info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 14,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: (isVideo ? const Color(0xFFe94560) : const Color(0xFF9b59b6))
-                              .withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          type.toUpperCase(),
-                          style: TextStyle(
-                            color: isVideo ? const Color(0xFFe94560) : const Color(0xFF9b59b6),
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: (isVideo ? const Color(0xFFe94560) : const Color(0xFF9b59b6))
+                                .withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            type.toUpperCase(),
+                            style: TextStyle(
+                              color: isVideo ? const Color(0xFFe94560) : const Color(0xFF9b59b6),
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        size,
-                        style: const TextStyle(color: Colors.white54, fontSize: 12),
-                      ),
-                    ],
+                        const SizedBox(width: 8),
+                        Text(
+                          size,
+                          style: const TextStyle(color: Colors.white54, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              // Actions
+              Column(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.open_in_browser, color: Colors.white54, size: 20),
+                    onPressed: () => _openInBrowser(media),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    tooltip: 'Open in browser',
+                  ),
+                  const SizedBox(height: 4),
+                  IconButton(
+                    icon: const Icon(Icons.share, color: Colors.white54, size: 20),
+                    onPressed: () => _shareMedia(media),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    tooltip: 'Share',
+                  ),
+                  const SizedBox(height: 4),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                    onPressed: () => _deleteMedia(mediaId, type),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    tooltip: 'Delete',
                   ),
                 ],
               ),
-            ),
-            // Actions
-            Column(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.share, color: Colors.white54, size: 22),
-                  onPressed: () => _shareMedia(media),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-                const SizedBox(height: 8),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
-                  onPressed: () => _deleteMedia(mediaId, type),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

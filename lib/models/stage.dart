@@ -116,6 +116,8 @@ class RallyInfo {
   final int stagesCount;
   final DateTime? startDate;
   final DateTime? endDate;
+  final bool isLocal; // True if rally exists only locally (not synced to server)
+  final bool hasPendingChanges; // True if rally has unsync'd changes
 
   RallyInfo({
     required this.id,
@@ -123,6 +125,8 @@ class RallyInfo {
     required this.stagesCount,
     this.startDate,
     this.endDate,
+    this.isLocal = false,
+    this.hasPendingChanges = false,
   });
 
   factory RallyInfo.fromJson(Map<String, dynamic> json) {
@@ -132,6 +136,29 @@ class RallyInfo {
       stagesCount: json['stagesCount'] as int? ?? 0,
       startDate: json['startDate'] != null ? DateTime.parse(json['startDate'] as String) : null,
       endDate: json['endDate'] != null ? DateTime.parse(json['endDate'] as String) : null,
+      isLocal: json['isLocal'] as bool? ?? false,
+      hasPendingChanges: json['hasPendingChanges'] as bool? ?? false,
     );
+  }
+
+  // Check if this rally is currently active (today is within its date range)
+  bool isCurrentlyActive() {
+    if (startDate == null) return false;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final start = DateTime(startDate!.year, startDate!.month, startDate!.day);
+
+    if (endDate != null) {
+      final end = DateTime(endDate!.year, endDate!.month, endDate!.day);
+      return !today.isBefore(start) && !today.isAfter(end);
+    }
+
+    // If no end date, consider active from start date onwards
+    return !today.isBefore(start);
+  }
+
+  // Check if this rally should be auto-activated (starts today or is ongoing)
+  bool shouldAutoActivate() {
+    return isCurrentlyActive();
   }
 }

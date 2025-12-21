@@ -13,6 +13,7 @@ class QueueItem {
   final String? stage;
   final String? category;
   final DateTime? captureDate; // Date when media was captured (from EXIF/metadata)
+  final String? rallyId; // Rally ID for device-specific rally selection
 
   QueueItem({
     required this.id,
@@ -23,6 +24,7 @@ class QueueItem {
     this.stage,
     this.category,
     this.captureDate,
+    this.rallyId,
   });
 
   Map<String, dynamic> toJson() => {
@@ -34,6 +36,7 @@ class QueueItem {
     'stage': stage,
     'category': category,
     'captureDate': captureDate?.toIso8601String(),
+    'rallyId': rallyId,
   };
 
   factory QueueItem.fromJson(Map<String, dynamic> json) => QueueItem(
@@ -45,6 +48,7 @@ class QueueItem {
     stage: json['stage'],
     category: json['category'],
     captureDate: json['captureDate'] != null ? DateTime.tryParse(json['captureDate']) : null,
+    rallyId: json['rallyId'],
   );
 }
 
@@ -93,7 +97,7 @@ class QueueService {
     await addToQueueWithMetadata(filePath, fileType, null, null, title: title);
   }
 
-  // Add file to queue with stage and category metadata
+  // Add file to queue with stage, category, and rally metadata
   static Future<void> addToQueueWithMetadata(
     String filePath,
     String fileType,
@@ -101,6 +105,7 @@ class QueueService {
     String? category, {
     String? title,
     DateTime? captureDate,
+    String? rallyId,
   }) async {
     try {
       final queueDir = await _getQueueDir();
@@ -133,6 +138,7 @@ class QueueService {
         stage: stage,
         category: category,
         captureDate: mediaCaptureDate,
+        rallyId: rallyId,
       ));
 
       await _saveQueue(queue);
@@ -178,6 +184,7 @@ class QueueService {
           stage: item.stage,
           category: item.category,
           captureDate: item.captureDate,
+          rallyId: item.rallyId,
         );
       } else {
         result = await ApiService.uploadPhoto(
@@ -186,6 +193,7 @@ class QueueService {
           stage: item.stage,
           category: item.category,
           captureDate: item.captureDate,
+          rallyId: item.rallyId,
         );
       }
 

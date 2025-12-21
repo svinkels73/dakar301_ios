@@ -6,13 +6,14 @@ import '../models/stage.dart';
 class ApiService {
   static const String baseUrl = 'http://srv1028486.hstgr.cloud:3000';
 
-  // Upload a file with stage and category
+  // Upload a file with stage, category, and rally
   static Future<Map<String, dynamic>?> uploadMedia(
     File file, {
     required String stage,
     required MediaCategory category,
     String? title,
     DateTime? captureDate,
+    String? rallyId,
   }) async {
     try {
       final uri = Uri.parse('$baseUrl/upload');
@@ -25,6 +26,11 @@ class ApiService {
       request.fields['stage'] = stage;
       request.fields['category'] = category.id;
       request.fields['type'] = category.isPhoto ? 'photo' : 'video';
+
+      // Send rally ID for device-specific rally selection
+      if (rallyId != null) {
+        request.fields['rallyId'] = rallyId;
+      }
 
       // Send capture date for server-side stage classification
       if (captureDate != null) {
@@ -51,7 +57,7 @@ class ApiService {
   }
 
   // Legacy upload video (for backward compatibility)
-  static Future<Map<String, dynamic>?> uploadVideo(File videoFile, {String? title, String? stage, String? category, DateTime? captureDate}) async {
+  static Future<Map<String, dynamic>?> uploadVideo(File videoFile, {String? title, String? stage, String? category, DateTime? captureDate, String? rallyId}) async {
     try {
       final uri = Uri.parse('$baseUrl/upload');
       final request = http.MultipartRequest('POST', uri);
@@ -64,6 +70,7 @@ class ApiService {
       if (stage != null) request.fields['stage'] = stage;
       if (category != null) request.fields['category'] = category;
       if (captureDate != null) request.fields['captureDate'] = captureDate.toIso8601String();
+      if (rallyId != null) request.fields['rallyId'] = rallyId;
 
       request.files.add(await http.MultipartFile.fromPath(
         'video',
@@ -85,7 +92,7 @@ class ApiService {
   }
 
   // Legacy upload photo (for backward compatibility)
-  static Future<Map<String, dynamic>?> uploadPhoto(File photoFile, {String? title, String? stage, String? category, DateTime? captureDate}) async {
+  static Future<Map<String, dynamic>?> uploadPhoto(File photoFile, {String? title, String? stage, String? category, DateTime? captureDate, String? rallyId}) async {
     try {
       final uri = Uri.parse('$baseUrl/upload');
       final request = http.MultipartRequest('POST', uri);
@@ -98,6 +105,7 @@ class ApiService {
       if (stage != null) request.fields['stage'] = stage;
       if (category != null) request.fields['category'] = category;
       if (captureDate != null) request.fields['captureDate'] = captureDate.toIso8601String();
+      if (rallyId != null) request.fields['rallyId'] = rallyId;
 
       request.files.add(await http.MultipartFile.fromPath(
         'photo',
