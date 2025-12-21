@@ -4,6 +4,9 @@ import 'screens/home_screen.dart';
 import 'services/background_sync_service.dart';
 import 'services/ios_background_service.dart';
 import 'services/stages_service.dart';
+import 'services/queue_service.dart';
+// Android-only imports
+import 'services/foreground_upload_service.dart' if (dart.library.io) 'services/foreground_upload_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -11,8 +14,15 @@ void main() async {
   // Initialize platform-specific background services
   try {
     if (Platform.isAndroid) {
+      // Android: Use WorkManager + Foreground Service for Huawei/Xiaomi
       await BackgroundSyncService.initialize();
+      await ForegroundUploadService.initialize();
+      final queueCount = await QueueService.getQueueCount();
+      if (queueCount > 0) {
+        await ForegroundUploadService.startUploadService();
+      }
     } else if (Platform.isIOS) {
+      // iOS: Use native Background Fetch
       await IOSBackgroundService.initialize();
     }
   } catch (e) {

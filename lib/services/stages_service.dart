@@ -200,6 +200,14 @@ class StagesService {
       updatedStages.add(stage);
     }
 
+    // Sort stages by date (allows multiple stages on the same day)
+    updatedStages.sort((a, b) {
+      final dateCompare = a.startDate.compareTo(b.startDate);
+      if (dateCompare != 0) return dateCompare;
+      // If same date, sort by name
+      return a.name.compareTo(b.name);
+    });
+
     final updatedConfig = StagesConfig(
       rallyName: currentConfig.rallyName,
       stages: updatedStages,
@@ -384,16 +392,27 @@ class StagesService {
 
   static Future<bool> createRally(String rallyName, {List<Stage>? stages}) async {
     final rallyId = _generateRallyId(rallyName);
+
+    // Sort stages by date if provided
+    final sortedStages = stages != null ? List<Stage>.from(stages) : <Stage>[];
+    if (sortedStages.isNotEmpty) {
+      sortedStages.sort((a, b) {
+        final dateCompare = a.startDate.compareTo(b.startDate);
+        if (dateCompare != 0) return dateCompare;
+        return a.name.compareTo(b.name);
+      });
+    }
+
     final config = StagesConfig(
       rallyName: rallyName,
-      stages: stages ?? [],
+      stages: sortedStages,
     );
 
     // Try server first
     try {
       final body = {
         'name': rallyName,
-        if (stages != null) 'stages': stages.map((s) => s.toJson()).toList(),
+        if (sortedStages.isNotEmpty) 'stages': sortedStages.map((s) => s.toJson()).toList(),
       };
 
       final response = await http.post(
@@ -434,29 +453,26 @@ class StagesService {
 
   static Future<bool> createRallyWithStages({
     required String rallyName,
-    required DateTime startDate,
+    required DateTime firstRacingDay,
     required int numberOfStages,
     bool includePreRally = false,
-    int preRallyDays = 1,
     bool includePostRally = false,
   }) async {
     final stages = <Stage>[];
-    DateTime currentDate = startDate;
 
-    // Pre-Rally stages
+    // Pre-Rally (day before first racing day)
     if (includePreRally) {
-      for (int i = 1; i <= preRallyDays; i++) {
-        stages.add(Stage(
-          id: preRallyDays == 1 ? 'pre_rally' : 'pre_rally_$i',
-          name: preRallyDays == 1 ? 'Pre-Rally' : 'Pre-Rally Day $i',
-          startDate: currentDate,
-          endDate: currentDate,
-        ));
-        currentDate = currentDate.add(const Duration(days: 1));
-      }
+      final preRallyDate = firstRacingDay.subtract(const Duration(days: 1));
+      stages.add(Stage(
+        id: 'pre_rally',
+        name: 'Pre-Rally',
+        startDate: preRallyDate,
+        endDate: preRallyDate,
+      ));
     }
 
-    // Regular stages
+    // Regular stages (start on first racing day)
+    DateTime currentDate = firstRacingDay;
     for (int i = 1; i <= numberOfStages; i++) {
       final stageId = 'stage_${i.toString().padLeft(2, '0')}';
       final stageName = 'Stage $i';
@@ -470,7 +486,7 @@ class StagesService {
       currentDate = currentDate.add(const Duration(days: 1));
     }
 
-    // Post-Rally stage
+    // Post-Rally stage (day after last racing day)
     if (includePostRally) {
       stages.add(Stage(
         id: 'post_rally',

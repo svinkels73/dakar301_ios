@@ -54,6 +54,7 @@ class QueueItem {
 
 class QueueService {
   static const String _queueKey = 'upload_queue';
+  static bool _isProcessing = false; // Lock to prevent concurrent processing
 
   // Get queue directory
   static Future<Directory> _getQueueDir() async {
@@ -164,46 +165,59 @@ class QueueService {
 
   // Process queue - upload all pending files
   static Future<int> processQueue() async {
-    final queue = await getQueue();
-    if (queue.isEmpty) return 0;
-
-    int successCount = 0;
-
-    for (final item in queue) {
-      final file = File(item.filePath);
-      if (!await file.exists()) {
-        await removeFromQueue(item.id);
-        continue;
-      }
-
-      Map<String, dynamic>? result;
-      if (item.fileType == 'video') {
-        result = await ApiService.uploadVideo(
-          file,
-          title: item.title,
-          stage: item.stage,
-          category: item.category,
-          captureDate: item.captureDate,
-          rallyId: item.rallyId,
-        );
-      } else {
-        result = await ApiService.uploadPhoto(
-          file,
-          title: item.title,
-          stage: item.stage,
-          category: item.category,
-          captureDate: item.captureDate,
-          rallyId: item.rallyId,
-        );
-      }
-
-      if (result != null) {
-        await removeFromQueue(item.id);
-        successCount++;
-      }
+    // Prevent concurrent processing (causes duplicates)
+    if (_isProcessing) {
+      return 0;
     }
+    _isProcessing = true;
 
-    return successCount;
+    try {
+      final queue = await getQueue();
+      if (queue.isEmpty) {
+        _isProcessing = false;
+        return 0;
+      }
+
+      int successCount = 0;
+
+      for (final item in queue) {
+        final file = File(item.filePath);
+        if (!await file.exists()) {
+          await removeFromQueue(item.id);
+          continue;
+        }
+
+        Map<String, dynamic>? result;
+        if (item.fileType == 'video') {
+          result = await ApiService.uploadVideo(
+            file,
+            title: item.title,
+            stage: item.stage,
+            category: item.category,
+            captureDate: item.captureDate,
+            rallyId: item.rallyId,
+          );
+        } else {
+          result = await ApiService.uploadPhoto(
+            file,
+            title: item.title,
+            stage: item.stage,
+            category: item.category,
+            captureDate: item.captureDate,
+            rallyId: item.rallyId,
+          );
+        }
+
+        if (result != null) {
+          await removeFromQueue(item.id);
+          successCount++;
+        }
+      }
+
+      return successCount;
+    } finally {
+      _isProcessing = false;
+    }
   }
 
   // Check if server is reachable

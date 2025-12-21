@@ -1,7 +1,7 @@
 name: dakar301
 description: "Dania Media - Capture and share your videos"
 publish_to: 'none'
-version: 4.0.2+29
+version: 4.0.7+34
 
 environment:
   sdk: ^3.5.0
@@ -19,6 +19,7 @@ dependencies:
   workmanager: ^0.5.2
   connectivity_plus: ^6.0.3
   video_player: ^2.8.2
+  flutter_foreground_task: ^8.11.0
 
 dev_dependencies:
   flutter_test:

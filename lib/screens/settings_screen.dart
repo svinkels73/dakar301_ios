@@ -226,10 +226,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _createNewRally() async {
     final nameController = TextEditingController();
-    DateTime startDate = DateTime.now();
-    int numberOfStages = 10;
+    DateTime firstRacingDay = DateTime.now();
+    int numberOfStages = 5;
     bool includePreRally = true;
-    int preRallyDays = 2;
     bool includePostRally = true;
 
     final result = await showDialog<Map<String, dynamic>>(
@@ -238,22 +237,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
         builder: (context, setDialogState) {
           // Generate preview stages
           List<Map<String, dynamic>> previewStages = [];
-          DateTime currentDate = startDate;
 
-          // Pre-Rally days
+          // Pre-Rally (day before first racing day)
           if (includePreRally) {
-            for (int i = 1; i <= preRallyDays; i++) {
-              previewStages.add({
-                'id': 'pre_rally_$i',
-                'name': preRallyDays == 1 ? 'Pre-Rally' : 'Pre-Rally Day $i',
-                'date': currentDate,
-                'isSpecial': true,
-              });
-              currentDate = currentDate.add(const Duration(days: 1));
-            }
+            previewStages.add({
+              'id': 'pre_rally',
+              'name': 'Pre-Rally',
+              'date': firstRacingDay.subtract(const Duration(days: 1)),
+              'isSpecial': true,
+            });
           }
 
-          // Regular stages
+          // Regular stages (start on first racing day)
+          DateTime currentDate = firstRacingDay;
           for (int i = 1; i <= numberOfStages; i++) {
             previewStages.add({
               'id': 'stage_${i.toString().padLeft(2, '0')}',
@@ -303,7 +299,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onTap: () async {
                       final picked = await showDatePicker(
                         context: context,
-                        initialDate: startDate,
+                        initialDate: firstRacingDay,
                         firstDate: DateTime(2024),
                         lastDate: DateTime(2030),
                         builder: (context, child) {
@@ -319,12 +315,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         },
                       );
                       if (picked != null) {
-                        setDialogState(() => startDate = picked);
+                        setDialogState(() => firstRacingDay = picked);
                       }
                     },
                     child: InputDecorator(
                       decoration: const InputDecoration(
-                        labelText: 'Start Date',
+                        labelText: 'First Racing Day',
                         labelStyle: TextStyle(color: Colors.white60),
                         enabledBorder: OutlineInputBorder(
                           borderSide: BorderSide(color: Colors.white30),
@@ -332,7 +328,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         suffixIcon: Icon(Icons.calendar_today, color: Colors.white54),
                       ),
                       child: Text(
-                        DateFormat('dd MMMM yyyy').format(startDate),
+                        DateFormat('dd MMMM yyyy').format(firstRacingDay),
                         style: const TextStyle(color: Colors.white),
                       ),
                     ),
@@ -410,8 +406,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                                   ),
                                   Text(
-                                    'Verifications, shakedown...',
-                                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11),
+                                    'Day before first racing day',
+                                    style: TextStyle(color: Colors.orange.withOpacity(0.8), fontSize: 11),
                                   ),
                                 ],
                               ),
@@ -423,68 +419,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                           ],
                         ),
-                        // Pre-Rally days selector
-                        if (includePreRally)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Row(
-                              children: [
-                                Text(
-                                  'Days: ',
-                                  style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
-                                ),
-                                const Spacer(),
-                                Container(
-                                  decoration: BoxDecoration(
-                                    border: Border.all(color: Colors.orange.withOpacity(0.5)),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      InkWell(
-                                        onTap: preRallyDays > 1
-                                            ? () => setDialogState(() => preRallyDays--)
-                                            : null,
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          child: Icon(
-                                            Icons.remove,
-                                            size: 16,
-                                            color: preRallyDays > 1 ? Colors.orange : Colors.white24,
-                                          ),
-                                        ),
-                                      ),
-                                      Container(
-                                        width: 30,
-                                        alignment: Alignment.center,
-                                        child: Text(
-                                          '$preRallyDays',
-                                          style: const TextStyle(
-                                            color: Colors.orange,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                      InkWell(
-                                        onTap: preRallyDays < 7
-                                            ? () => setDialogState(() => preRallyDays++)
-                                            : null,
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          child: Icon(
-                                            Icons.add,
-                                            size: 16,
-                                            color: preRallyDays < 7 ? Colors.orange : Colors.white24,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
                         const Divider(color: Colors.white24, height: 16),
                         Row(
                           children: [
@@ -497,8 +431,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                                   ),
                                   Text(
-                                    'Prize ceremony, interviews...',
-                                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11),
+                                    'Day after last racing day',
+                                    style: TextStyle(color: Colors.orange.withOpacity(0.8), fontSize: 11),
                                   ),
                                 ],
                               ),
@@ -604,10 +538,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ElevatedButton(
                 onPressed: () => Navigator.pop(context, {
                   'name': nameController.text,
-                  'startDate': startDate,
+                  'firstRacingDay': firstRacingDay,
                   'numberOfStages': numberOfStages,
                   'includePreRally': includePreRally,
-                  'preRallyDays': preRallyDays,
                   'includePostRally': includePostRally,
                 }),
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFe94560)),
@@ -624,10 +557,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       final success = await StagesService.createRallyWithStages(
         rallyName: result['name'],
-        startDate: result['startDate'],
+        firstRacingDay: result['firstRacingDay'],
         numberOfStages: result['numberOfStages'],
         includePreRally: result['includePreRally'] ?? false,
-        preRallyDays: result['preRallyDays'] ?? 1,
         includePostRally: result['includePostRally'] ?? false,
       );
 
@@ -636,7 +568,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         if (mounted) {
           // Count total stages including pre/post
           int totalStages = result['numberOfStages'] as int;
-          if (result['includePreRally'] == true) totalStages += (result['preRallyDays'] as int?) ?? 1;
+          if (result['includePreRally'] == true) totalStages++;
           if (result['includePostRally'] == true) totalStages++;
 
           ScaffoldMessenger.of(context).showSnackBar(

@@ -3,11 +3,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/stage.dart';
 import '../services/api_service.dart';
 import '../services/queue_service.dart';
 import '../services/stages_service.dart';
+// Android-only: Foreground service for Huawei/Xiaomi
+import '../services/foreground_upload_service.dart' if (dart.library.io) '../services/foreground_upload_service.dart';
 import 'videos_screen.dart';
 import 'settings_screen.dart';
 
@@ -57,7 +60,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkConnectionAndProcessQueue();
-      _loadCurrentStage();
+      // Keep current stage selection when returning from camera/gallery
+      _loadCurrentStage(keepCurrentSelection: true);
     }
   }
 
@@ -72,15 +76,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
   }
 
-  Future<void> _loadCurrentStage() async {
+  Future<void> _loadCurrentStage({bool keepCurrentSelection = false}) async {
     final config = await StagesService.getStagesConfig();
-    final stage = await StagesService.getCurrentStage();
 
     if (mounted) {
       setState(() {
-        _currentStage = stage;
         _allStages = config.stages;
         _rallyName = config.rallyName;
+
+        // Only auto-select stage if not keeping current selection
+        if (!keepCurrentSelection || _currentStage == null) {
+          // Try to find current stage by date
+          final stage = config.getCurrentStage();
+          _currentStage = stage;
+        } else {
+          // Keep current selection but update reference from new list
+          final existingId = _currentStage!.id;
+          final updatedStage = config.stages.where((s) => s.id == existingId).firstOrNull;
+          if (updatedStage != null) {
+            _currentStage = updatedStage;
+          }
+        }
       });
     }
   }
@@ -254,6 +270,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       rallyId: rallyId,
     );
     await _updateQueueCount();
+
+    // Android only: Start foreground service for reliable upload on Huawei/Xiaomi
+    if (Platform.isAndroid) {
+      await ForegroundUploadService.startUploadService();
+    }
   }
 
   void _showStageSelector() {
@@ -263,6 +284,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      isScrollControlled: true,
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -277,36 +299,77 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Select Stage',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Select Stage',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _addNewStage();
+                    },
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add Stage'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFFe94560),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-            Flexible(
+            const SizedBox(height: 8),
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.5,
+              ),
               child: ListView.builder(
                 shrinkWrap: true,
                 itemCount: _allStages.length,
                 itemBuilder: (context, index) {
                   final stage = _allStages[index];
                   final isSelected = stage.id == _currentStage?.id;
+                  final isToday = stage.containsDate(DateTime.now());
                   return ListTile(
                     leading: Icon(
                       isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
                       color: isSelected ? const Color(0xFFe94560) : Colors.white54,
                     ),
-                    title: Text(
-                      stage.name,
-                      style: TextStyle(
-                        color: isSelected ? const Color(0xFFe94560) : Colors.white,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      ),
+                    title: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            stage.name,
+                            style: TextStyle(
+                              color: isSelected ? const Color(0xFFe94560) : Colors.white,
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            ),
+                          ),
+                        ),
+                        if (isToday)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFe94560),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              'TODAY',
+                              style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                      ],
                     ),
                     subtitle: Text(
-                      '${stage.startDate.day}/${stage.startDate.month}/${stage.startDate.year}',
+                      DateFormat('dd/MM/yyyy').format(stage.startDate),
                       style: const TextStyle(color: Colors.white54, fontSize: 12),
                     ),
                     onTap: () {
@@ -326,11 +389,197 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _addNewStage() async {
+    final nameController = TextEditingController();
+    final idController = TextEditingController();
+    DateTime selectedDate = DateTime.now();
+
+    final result = await showDialog<Stage>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF16213e),
+          title: const Text('Add New Stage', style: TextStyle(color: Colors.white)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  style: const TextStyle(color: Colors.white),
+                  onChanged: (value) {
+                    // Auto-generate ID from name
+                    final id = value.trim().toLowerCase()
+                        .replaceAll(RegExp(r'[^a-z0-9\s]'), '')
+                        .replaceAll(RegExp(r'\s+'), '_');
+                    idController.text = id;
+                  },
+                  decoration: const InputDecoration(
+                    labelText: 'Stage Name',
+                    labelStyle: TextStyle(color: Colors.white60),
+                    hintText: 'e.g. Stage 6, Price Giving Ceremony',
+                    hintStyle: TextStyle(color: Colors.white30),
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white30),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFFe94560)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: idController,
+                  style: const TextStyle(color: Colors.white70),
+                  decoration: const InputDecoration(
+                    labelText: 'Stage ID (folder name)',
+                    labelStyle: TextStyle(color: Colors.white60),
+                    hintText: 'e.g. stage_06',
+                    hintStyle: TextStyle(color: Colors.white30),
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white30),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFFe94560)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime(2024),
+                      lastDate: DateTime(2030),
+                      builder: (context, child) {
+                        return Theme(
+                          data: Theme.of(context).copyWith(
+                            colorScheme: const ColorScheme.dark(
+                              primary: Color(0xFFe94560),
+                              surface: Color(0xFF16213e),
+                            ),
+                          ),
+                          child: child!,
+                        );
+                      },
+                    );
+                    if (picked != null) {
+                      setDialogState(() => selectedDate = picked);
+                    }
+                  },
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Date',
+                      labelStyle: TextStyle(color: Colors.white60),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white30),
+                      ),
+                      suffixIcon: Icon(Icons.calendar_today, color: Colors.white54),
+                    ),
+                    child: Text(
+                      DateFormat('dd MMMM yyyy').format(selectedDate),
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.blue, size: 16),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Stage will be sorted by date automatically',
+                          style: TextStyle(color: Colors.blue, fontSize: 11),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final name = nameController.text.trim();
+                final id = idController.text.trim();
+                if (name.isEmpty || id.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please fill all fields'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+                Navigator.pop(context, Stage(
+                  id: id,
+                  name: name,
+                  startDate: selectedDate,
+                  endDate: selectedDate,
+                ));
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFe94560)),
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null) {
+      // Add the stage via StagesService
+      final success = await StagesService.addStage(result);
+
+      if (success) {
+        // Reload stages list without changing selection
+        await _loadCurrentStage(keepCurrentSelection: true);
+
+        // Now explicitly select the newly created stage
+        setState(() {
+          // Find the stage in the updated list by ID
+          final newStage = _allStages.where((s) => s.id == result.id).firstOrNull;
+          _currentStage = newStage ?? result;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Stage "${result.name}" added and selected'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to add stage'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   Widget _buildCaptureScreen() {
     return RefreshIndicator(
       onRefresh: () async {
         await _checkConnectionAndProcessQueue();
-        await _loadCurrentStage();
+        await _loadCurrentStage(keepCurrentSelection: true);
         await _loadStats();
       },
       color: const Color(0xFFe94560),
